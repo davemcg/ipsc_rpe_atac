@@ -1,0 +1,14 @@
+scp trek.nhgri.nih.gov:/cluster/ifs/projects/solexa/reads/180323_OPTIMUS_HVWYLBCXY/180323_OPTIMUS_HVWYLBCXY.1.16871587.bam .
+scp trek.nhgri.nih.gov:/cluster/ifs/projects/solexa/reads/180323_OPTIMUS_HVWYLBCXY/180323_OPTIMUS_HVWYLBCXY.2.16871591.bam .
+scp trek.nhgri.nih.gov:/cluster/ifs/projects/solexa/reads/180323_OPTIMUS_HVWYLBCXY/180323_OPTIMUS_HVWYLBCXY.2.16871593.bam .
+scp trek.nhgri.nih.gov:/cluster/ifs/projects/solexa/reads/180405_OPTIMUS_HVKHVBCXY/180405_OPTIMUS_HVKHVBCXY.1.16871581.bam .
+scp trek.nhgri.nih.gov:/cluster/ifs/projects/solexa/reads/180405_OPTIMUS_HVKHVBCXY/180405_OPTIMUS_HVKHVBCXY.2.16871581.bam .
+scp trek.nhgri.nih.gov:/cluster/ifs/projects/solexa/reads/180323_OPTIMUS_HVWYLBCXY/180323_OPTIMUS_HVWYLBCXY.1.16871583.bam .
+scp trek.nhgri.nih.gov:/cluster/ifs/projects/solexa/reads/180405_OPTIMUS_HVKHVBCXY/180405_OPTIMUS_HVKHVBCXY.1.16871585.bam .
+scp trek.nhgri.nih.gov:/cluster/ifs/projects/solexa/reads/180405_OPTIMUS_HVKHVBCXY/180405_OPTIMUS_HVKHVBCXY.2.16871585.bam .
+scp trek.nhgri.nih.gov:/cluster/ifs/projects/solexa/reads/180328_OPTIMUS_HVLCKBCXY/180328_OPTIMUS_HVLCKBCXY.2.16871603.bam .
+scp trek.nhgri.nih.gov:/cluster/ifs/projects/solexa/reads/180323_OPTIMUS_HVWYLBCXY/180323_OPTIMUS_HVWYLBCXY.1.16871595.bam .
+scp trek.nhgri.nih.gov:/cluster/ifs/projects/solexa/reads/180323_OPTIMUS_HVWYLBCXY/180323_OPTIMUS_HVWYLBCXY.2.16871589.bam .
+scp trek.nhgri.nih.gov:/cluster/ifs/projects/solexa/reads/180405_OPTIMUS_HVKHVBCXY/180405_OPTIMUS_HVKHVBCXY.1.16871601.bam .
+scp trek.nhgri.nih.gov:/cluster/ifs/projects/solexa/reads/180405_OPTIMUS_HVKHVBCXY/180405_OPTIMUS_HVKHVBCXY.2.16871601.bam .
+scp trek.nhgri.nih.gov:/cluster/ifs/projects/solexa/reads/180328_OPTIMUS_HVLCKBCXY/180328_OPTIMUS_HVLCKBCXY.2.16871597.bam .

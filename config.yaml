@@ -1,0 +1,7 @@
+metadata_file: '/home/mcgaugheyd/git/ipsc_rpe_atac/metadata.csv'
+bwa_genome: '/data/mcgaugheyd/genomes/1000G_phase2_GRCh37/human_g1k_v37_decoy.fasta'
+bwa_version: 'bwa/0.7.12'
+samtools_version: 'samtools/1.6'
+picard_version:  'picard/2.9.2'
+macs2_version: 'macs/2.1.1.20160309'
+bedtools_version: 'bedtools/2.27.1'
