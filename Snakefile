@@ -30,10 +30,10 @@ wildcard_constraints:
 
 rule all:
 	input:
-		#expand('macs_peaks/{sample}.macs2_broadPeaks.xls', sample = list(SAMPLE_PATH.keys())
-		#expand('realigned/{lane_file}.bam', lane_file = [x.split('/')[-1].split('.bam')[0] for x in list(itertools.chain.from_iterable(SAMPLE_PATH.values()))])
 		expand('macs_peak/{sample}_peaks.blackListed.hg19.narrowPeak', sample = list(SAMPLE_PATH.keys())),
-		expand('fastqc/{sample}', sample = list(SAMPLE_PATH.keys()))
+		#expand('fastqc/{sample}', sample = list(SAMPLE_PATH.keys())),
+		'deeptools/multiBamSummary.tsv',
+		expand('mosdepth/{sample}.regions.bed.gz',  sample = list(SAMPLE_PATH.keys()))
 
 #rule download_references:
 
@@ -69,26 +69,6 @@ rule realign:
 			{output}
 		"""
 
-# if sample has more than one lane bam, then merge into one bam
-rule merge_bam:
-	input:
-		lambda wildcards: expand('q5_rmdup/{lane_file}.q5.rmdup.bam', lane_file = [x.split('/')[-1][:-4] for x in SAMPLE_PATH[wildcards.sample]])
-	output:
-		temp('merged_bam/{sample}.bam')
-	shell:
-		"""
-		module load {config[picard_version]}
-		picard_i=""
-		for bam in {input}; do
-			picard_i+=" I=$bam"
-		done
-		java -Xmx20g -XX:+UseG1GC -XX:ParallelGCThreads={threads} -jar $PICARD_JAR \
-			MergeSamFiles \
-			TMP_DIR=/lscratch/$SLURM_JOB_ID \
-			$picard_i \
-			O={output}
-		"""
-
 # remove dups, only keep reads with over q 5
 rule filter_bam:
 	input:
@@ -115,6 +95,29 @@ rule filter_bam:
 		rm {output.bam}TEMP*
 		"""
 
+# if sample has more than one lane bam, then merge into one bam
+rule merge_bam:
+	input:
+		lambda wildcards: expand('q5_rmdup/{lane_file}.q5.rmdup.bam', lane_file = [x.split('/')[-1][:-4] for x in SAMPLE_PATH[wildcards.sample]])
+	output:
+		bam = 'merged_bam/{sample}.bam',
+		bai = 'merged_bam/{sample}.bam.bai'
+	shell:
+		"""
+		module load {config[samtools_version]}
+		module load {config[picard_version]}
+		picard_i=""
+		for bam in {input}; do
+			picard_i+=" I=$bam"
+		done
+		java -Xmx20g -XX:+UseG1GC -XX:ParallelGCThreads={threads} -jar $PICARD_JAR \
+			MergeSamFiles \
+			TMP_DIR=/lscratch/$SLURM_JOB_ID \
+			$picard_i \
+			O={output.bam}
+		samtools index {output.bam}
+		"""
+
 # basic stats on the bam file
 rule fastqc:
 	input:
@@ -125,8 +128,7 @@ rule fastqc:
 	shell:
 		"""
 		module load fastqc
-		mkdir -p fastqc
-		mkdir -p fastqc/{wildcards.sample}
+		mkdir -p {output}
 		fastqc -t {threads} -o {output} {input}
 		"""
 
@@ -188,6 +190,51 @@ rule convert_peaks_to_hg19:
 			-c /home/mcgaugheyd/git/ChromosomeMappings/GRCh37_ensembl2UCSC.txt \
 			-f <( grep -v hs37d5 {input} )  > \
 			{output}
+		"""
+
+# create superset of all peak file
+rule union_peaks:
+	input:
+		expand('macs_peak/{sample}_peaks.blackListed.narrowPeak', sample = list(SAMPLE_PATH.keys()))
+	output:
+		'macs_peak/union_peaks.blackListed.narrowPeak'
+	shell:
+		"""
+		cat {input} | sort -k1,1 -k2,2n > {output}
+		"""
+
+# merge overlapping peaks together
+rule merge_peaks:
+	input:
+		'macs_peak/union_peaks.blackListed.narrowPeak'
+	output:
+		'macs_peak/master_peaks.blackListed.narrowPeak'
+	shell:
+		"""
+		module load {config[bedtools_version]}
+		bedtools merge -i {input} > {output}
+		"""
+
+# compute read coverage across master peaks 
+rule multiBamSummary:
+	input:
+		peaks = 'macs_peak/master_peaks.blackListed.narrowPeak',
+		bam = expand('merged_bam/{sample}.bam', sample = list(SAMPLE_PATH.keys())),
+		bai = expand('merged_bam/{sample}.bam.bai', sample = list(SAMPLE_PATH.keys()))
+	output:
+		default = 'deeptools/multiBamSummary.npz',
+		tsv = 'deeptools/multiBamSummary.tsv'
+	threads:
+		16
+	shell:
+		"""
+		module load {config[deeptools_version]}
+		multiBamSummary BED-file \
+			--bamfiles {input.bam} \
+			--BED {input.peaks} \
+			-o {output.default} \
+			-p {threads} \
+			--outRawCounts {output.tsv}
 		"""
 
 # to visualize pileup in UCSC genome browser		
