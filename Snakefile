@@ -31,7 +31,7 @@ wildcard_constraints:
 rule all:
 	input:
 		expand('macs_peak/{sample}_peaks.blackListed.hg19.narrowPeak', sample = list(SAMPLE_PATH.keys())),
-		#expand('fastqc/{sample}', sample = list(SAMPLE_PATH.keys())),
+		'fastqc/multiqc/multiqc_report.html',
 		'deeptools/multiBamSummary.tsv',
 		expand('/data/mcgaugheyd/datashare/hufnagel/{sample}.bw', sample = list(SAMPLE_PATH.keys())),
 		expand('/data/mcgaugheyd/datashare/hufnagel/{sample}_peaks.blackListed.hg19.narrowPeak.bb', sample = list(SAMPLE_PATH.keys()))
@@ -180,6 +180,17 @@ rule fastqc:
 		fastqc -t {threads} -o {output} {input}
 		"""
 
+# multiqc
+rule multiqc:
+	input:
+		expand('fastqc/{sample}', sample = list(SAMPLE_PATH.keys()))
+	output:
+		'fastqc/multiqc/multiqc_report.html'
+	shell:
+		"""
+		module load multiqc
+		multiqc fastqc/ -o fastqc/multiqc
+		"""
 # macs2
 # ATAC-seq doesn't have control (no input sample). So run in single mode
 # https://groups.google.com/forum/#!topic/macs-announcement/4OCE59gkpKY
