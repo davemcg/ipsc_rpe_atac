@@ -22,7 +22,7 @@ for line in metadata:
 		old_path.append(path)
 		SAMPLE_PATH[sample] = old_path
 
-localrules: pull_lane_bams_from_nisc, retrieve_and_process_black_list, black_list, ucsc_view
+localrules: pull_lane_bams_from_nisc, retrieve_and_process_black_list, black_list, ucsc_view, total_reads, union_peaks, merge_peaks
 
 wildcard_constraints:
 	sample='|'.join(list(SAMPLE_PATH.keys())),
@@ -33,6 +33,7 @@ rule all:
 		expand('macs_peak/{sample}_peaks.blackListed.hg19.narrowPeak', sample = list(SAMPLE_PATH.keys())),
 		'fastqc/multiqc/multiqc_report.html',
 		'deeptools/multiBamSummary.tsv',
+		'metrics/reads_by_sample.txt',
 		expand('/data/mcgaugheyd/datashare/hufnagel/{sample}.bw', sample = list(SAMPLE_PATH.keys())),
 		expand('/data/mcgaugheyd/datashare/hufnagel/{sample}_peaks.blackListed.hg19.narrowPeak.bb', sample = list(SAMPLE_PATH.keys()))
 
@@ -69,7 +70,6 @@ rule realign:
 			{output}
 		"""
 
-
 # if sample has more than one lane bam, then merge into one bam
 rule merge_bam:
 	input:
@@ -85,9 +85,9 @@ rule merge_bam:
 		for bam in {input}; do
 			picard_i+=" I=$bam"
 		done
-		java -Xmx20g -XX:+UseG1GC -XX:ParallelGCThreads={threads} -jar $PICARD_JAR \
+		java -Xmx8g -XX:+UseG1GC -XX:ParallelGCThreads={threads} -jar $PICARD_JAR \
 			MergeSamFiles \
-			TMP_DIR=/lscratch/$SLURM_JOB_ID \
+			TMP_DIR=/scratch/$SLURM_JOB_ID \
 			$picard_i \
 			O={output.bam}
 		samtools index {output.bam}
@@ -160,7 +160,7 @@ rule bam_to_bigWig:
 
 		 /home/mcgaugheyd/git/ChromosomeMappings/convert_notation.py \
 			-c /home/mcgaugheyd/git/ChromosomeMappings/GRCh37_ensembl2UCSC.txt \
-			-f <( grep ^[0-9] {output.bedgraph} ) | sort -k1,1 -k2,2n > {output.bedgraph}TEMP
+			-f <( grep ^[0-9XY] {output.bedgraph} ) | sort -k1,1 -k2,2n > {output.bedgraph}TEMP
 		bedGraphToBigWig {output.bedgraph}TEMP /data/mcgaugheyd/genomes/hg19/hg19.chrom.sizes {output.bw}
 		rm {output.bedgraph}TEMP
 		"""
@@ -181,7 +181,7 @@ rule fastqc:
 		"""
 
 # multiqc
-rule multiqc:
+rule multiqc_fastqc:
 	input:
 		expand('fastqc/{sample}', sample = list(SAMPLE_PATH.keys()))
 	output:
@@ -191,6 +191,21 @@ rule multiqc:
 		module load multiqc
 		multiqc fastqc/ -o fastqc/multiqc
 		"""
+
+# post filtering metrics 
+rule total_reads:
+	input:
+		expand('merged_bam_HQ/{sample}.q5.rmdup.bam', sample = list(SAMPLE_PATH.keys()))
+	output:
+		'metrics/reads_by_sample.txt'
+	shell:
+		"""
+		for i in {input}; do samtools idxstats $i | cut -f3 | awk 'BEGIN {total=0} {total += $1} END {print total}'; done > metrics/TEMP2
+		for i in {input}; do echo $i; done > metrics/TEMP1
+		paste metrics/TEMP1 metrics/TEMP2 > {output}
+		rm metrics/TEMP1; metrics/TEMP2
+		"""
+
 # macs2
 # ATAC-seq doesn't have control (no input sample). So run in single mode
 # https://groups.google.com/forum/#!topic/macs-announcement/4OCE59gkpKY
