@@ -26,7 +26,7 @@ library(ggrepel)
 cov <- fread('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/deeptools/multiBamSummary.tsv')
 colnames(cov) <- gsub("\\'","",colnames(cov))
 
-peak_pca <- prcomp(cov_cor[,4:length(cov_cor)] %>% t(), center = T, scale= T)
+peak_pca <- prcomp(cov[,4:length(cov)] %>% t(), center = T, scale= T)
 
 pca_plot <- peak_pca$x %>%  
   data.frame() %>% 
@@ -64,7 +64,7 @@ stdev_plot
 
 ```{r}
 # remove outliers
-cov_cor2 <- cov_cor[,-c('iPSC_IIK_11.bam', 'RFP_IIG_3.bam')]
+cov_cor2 <- cov[,-c('iPSC_IIK_11.bam', 'RFP_IIG_3.bam')]
 peak_pca <- prcomp(cov_cor2[,4:length(cov_cor2)] %>% t(), center = T, scale= T)
 
 
@@ -99,6 +99,94 @@ pca_plot
 ```
 
 # Standard Deviation oF PC, remove outliers
+```{r}
+stdev_plot
+```
+
+
+```{r}
+# remove iPSC
+
+cov_cor3 <- cov_cor2 %>% select(-contains('iPSC'))
+
+peak_pca <- prcomp(cov_cor3[,4:length(cov_cor3)] %>% t(), center=T)
+
+pca_plot <- peak_pca$x %>%  
+  data.frame() %>% 
+  rownames_to_column('Info') %>%
+  rowwise() %>% 
+  mutate(Sample = str_split(Info, '_')[[1]][1],
+         Replicate = paste(str_split(Info, '_')[[1]][2],
+                           str_split(Info, '_')[[1]][3], sep='_')) %>% 
+  mutate(Replicate = gsub('.bam','', Replicate)) %>% 
+  ggplot(aes(x=PC1, y=PC2, colour = Sample, label=Replicate)) + 
+  geom_point() +
+  geom_text_repel() +
+  theme_minimal() +
+  ggsci::scale_color_aaas()
+
+
+stdev_plot <- peak_pca$sdev %>% 
+  data.frame() %>% 
+  ggplot(aes(y=., x=seq(1,7,by=1))) + 
+  geom_bar(stat='identity') + 
+  ylab('Standard Deviation') + 
+  xlab('PC') + 
+  theme_minimal() + 
+  scale_x_continuous(breaks = seq(1,7,by=1))
+```
+
+# PCA, only RFP and GFP
+```{r}
+pca_plot
+```
+
+# Standard Deviation oF PC, only RFP and GFP
+```{r}
+stdev_plot
+```
+
+
+
+
+```{r}
+# use 3,7,11 <- the deeper sequenced set
+
+cov_cor4 <- cov %>% select(GFP_IIG_7.bam, RFP_IIG_3.bam, iPSC_IIK_11.bam)
+
+peak_pca <- prcomp(cov_cor4 %>% t(), center=T)
+
+pca_plot <- peak_pca$x %>%  
+  data.frame() %>% 
+  rownames_to_column('Info') %>%
+  rowwise() %>% 
+  mutate(Sample = str_split(Info, '_')[[1]][1],
+         Replicate = paste(str_split(Info, '_')[[1]][2],
+                           str_split(Info, '_')[[1]][3], sep='_')) %>% 
+  mutate(Replicate = gsub('.bam','', Replicate)) %>% 
+  ggplot(aes(x=PC1, y=PC2, colour = Sample, label=Replicate)) + 
+  geom_point() +
+  geom_text_repel() +
+  theme_minimal() +
+  ggsci::scale_color_aaas()
+
+
+stdev_plot <- peak_pca$sdev %>% 
+  data.frame() %>% 
+  ggplot(aes(y=., x=seq(1,3,by=1))) + 
+  geom_bar(stat='identity') + 
+  ylab('Standard Deviation') + 
+  xlab('PC') + 
+  theme_minimal() + 
+  scale_x_continuous(breaks = seq(1,3,by=1))
+```
+
+# PCA, only RFP and GFP
+```{r}
+pca_plot
+```
+
+# Standard Deviation oF PC, only RFP and GFP
 ```{r}
 stdev_plot
 ```
