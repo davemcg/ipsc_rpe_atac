@@ -22,7 +22,7 @@ for line in metadata:
 		old_path.append(path)
 		SAMPLE_PATH[sample] = old_path
 
-localrules: pull_lane_bams_from_nisc, retrieve_and_process_black_list, black_list
+localrules: pull_lane_bams_from_nisc, retrieve_and_process_black_list, black_list, ucsc_view
 
 wildcard_constraints:
 	sample='|'.join(list(SAMPLE_PATH.keys())),
@@ -33,9 +33,9 @@ rule all:
 		expand('macs_peak/{sample}_peaks.blackListed.hg19.narrowPeak', sample = list(SAMPLE_PATH.keys())),
 		#expand('fastqc/{sample}', sample = list(SAMPLE_PATH.keys())),
 		'deeptools/multiBamSummary.tsv',
-		expand('mosdepth/{sample}.regions.bed.gz',  sample = list(SAMPLE_PATH.keys()))
+		expand('/data/mcgaugheyd/datashare/hufnagel/{sample}.bw', sample = list(SAMPLE_PATH.keys())),
+		expand('/data/mcgaugheyd/datashare/hufnagel/{sample}_peaks.blackListed.hg19.narrowPeak.bb', sample = list(SAMPLE_PATH.keys()))
 
-#rule download_references:
 
 rule pull_lane_bams_from_nisc:
 	output:
@@ -69,36 +69,11 @@ rule realign:
 			{output}
 		"""
 
-# remove dups, only keep reads with over q 5
-rule filter_bam:
-	input:
-		'realigned/{lane_file}.bam'
-	output:
-		metrics = 'metrics/{lane_file}.picard.metrics',
-		bam = temp('q5_rmdup/{lane_file}.q5.rmdup.bam'),
-		bai = temp('q5_rmdup/{lane_file}.q5.rmdup.bam.bai')
-	threads: 5
-	shell:
-		"""
-		module load {config[samtools_version]}
-		module load {config[picard_version]}
-		samtools view -O bam -q 5 -b {input} | \
-			samtools sort - -O bam -o {output.bam}TEMP
-		samtools index {output.bam}TEMP
-		java -Xmx4g -XX:ParallelGCThreads={threads} -jar $PICARDJARPATH/picard.jar \
-			MarkDuplicates \
-			INPUT={output.bam}TEMP \
-			OUTPUT={output.bam} \
-			REMOVE_DUPLICATES=true \
-			METRICS_FILE={output.metrics}
-		samtools index {output.bam}
-		rm {output.bam}TEMP*
-		"""
 
 # if sample has more than one lane bam, then merge into one bam
 rule merge_bam:
 	input:
-		lambda wildcards: expand('q5_rmdup/{lane_file}.q5.rmdup.bam', lane_file = [x.split('/')[-1][:-4] for x in SAMPLE_PATH[wildcards.sample]])
+		lambda wildcards: expand('realigned/{lane_file}.bam', lane_file = [x.split('/')[-1][:-4] for x in SAMPLE_PATH[wildcards.sample]])
 	output:
 		bam = 'merged_bam/{sample}.bam',
 		bai = 'merged_bam/{sample}.bam.bai'
@@ -118,7 +93,80 @@ rule merge_bam:
 		samtools index {output.bam}
 		"""
 
+# remove dups, only keep reads with over q 5
+rule filter_bam:
+	input:
+		'merged_bam/{sample}.bam'
+	output:
+		metrics = 'metrics/{sample}.picard.metrics',
+		bam = 'merged_bam_HQ/{sample}.q5.rmdup.bam',
+		bai = 'merged_bam_HQ/{sample}.q5.rmdup.bam.bai'
+	threads: 5
+	shell:
+		"""
+		module load {config[samtools_version]}
+		module load {config[picard_version]}
+		samtools view -O bam -q 5 -b {input} | \
+			samtools sort - -O bam -o {output.bam}TEMP
+		samtools index {output.bam}TEMP
+		java -Xmx4g -XX:ParallelGCThreads={threads} -jar $PICARDJARPATH/picard.jar \
+			MarkDuplicates \
+			INPUT={output.bam}TEMP \
+			OUTPUT={output.bam} \
+			REMOVE_DUPLICATES=true \
+			METRICS_FILE={output.metrics}
+		samtools index {output.bam}
+		rm {output.bam}TEMP*
+		"""
+
+# downsample to n reads
+rule downsample:
+	input:
+		bam = 'merged_bam_HQ/{sample}.q5.rmdup.bam',
+		bai = 'merged_bam_HQ/{sample}.q5.rmdup.bam.bai'
+	output:
+		bam = 'downsample_bam/{sample}.q5.rmdup.ds.bam',
+		bai = 'downsample_bam/{sample}.q5.rmdup.ds.bam.bai'
+	shell:
+		"""
+		module load {config[samtools_version]}
+		frac=$( samtools idxstats {input.bam} | cut -f3 | awk 'BEGIN {{total=0}} {{total += $1}} END {{frac=15000000/total;if (frac > 1) {{print 1}} else {{print frac}}}}' )
+		samtools view -s $frac -b {input.bam} > {output.bam}
+		samtools index {output.bam}
+		"""
+
+# bam to bigwig
+# for UCSC visualization
+# normalize by CPM
+rule bam_to_bigWig:
+	input:
+		'merged_bam_HQ/{sample}.q5.rmdup.ds.bam'
+	output:
+		bedgraph = temp('bigWig/{sample}.bG'),
+		bw = 'bigWig/{sample}.bw'
+	threads: 
+		16
+	shell:
+		"""
+		module load {config[deeptools_version]}
+		module load ucsc
+		bamCoverage --bam {input} -o {output.bedgraph} \
+			--numberOfProcessors {threads} \
+			--binSize 10 \
+			--normalizeUsing RPGC \
+			--effectiveGenomeSize 2864785220 \
+			--ignoreForNormalization MT \
+			--outFileFormat bedgraph
+
+		 /home/mcgaugheyd/git/ChromosomeMappings/convert_notation.py \
+			-c /home/mcgaugheyd/git/ChromosomeMappings/GRCh37_ensembl2UCSC.txt \
+			-f <( grep ^[0-9] {output.bedgraph} ) | sort -k1,1 -k2,2n > {output.bedgraph}TEMP
+		bedGraphToBigWig {output.bedgraph}TEMP /data/mcgaugheyd/genomes/hg19/hg19.chrom.sizes {output.bw}
+		rm {output.bedgraph}TEMP
+		"""
+
 # basic stats on the bam file
+# run on the bam file before q5, rmdup, and downsample happen
 rule fastqc:
 	input:
 		'merged_bam/{sample}.bam'
@@ -137,7 +185,7 @@ rule fastqc:
 # https://groups.google.com/forum/#!topic/macs-announcement/4OCE59gkpKY
 rule peak_calling:
 	input:
-		'merged_bam/{sample}.bam'
+		'downsample_bam/{sample}.q5.rmdup.ds.bam'
 	output:
 		peaks = 'macs_peak/{sample}_peaks.xls',
 		narrow_peaks = 'macs_peak/{sample}_peaks.narrowPeak',
@@ -237,10 +285,26 @@ rule multiBamSummary:
 			--outRawCounts {output.tsv}
 		"""
 
-# to visualize pileup in UCSC genome browser		
-rule bigWig:	
+# set up data for ucsc viewing
+# soft link bigWig to datashare
+# create bigBed and soft link to datashare
+rule ucsc_view:
 	input:
+		bigWig = 'bigWig/{sample}.bw', 
+		bed = 'macs_peak/{sample}_peaks.blackListed.hg19.narrowPeak'
+	params:
+		base_path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/'
 	output:
-	
+		bigWig = '/data/mcgaugheyd/datashare/hufnagel/{sample}.bw',
+		bigBed = '/data/mcgaugheyd/datashare/hufnagel/{sample}_peaks.blackListed.hg19.narrowPeak.bb'
+	shell:
+		"""
+		module load ucsc
+		cut -f1,2,3,4 {input.bed} | sort -k1,1 -k2,2n > {input.bed}TEMP 
+		bedToBigBed {input.bed}TEMP /data/mcgaugheyd/genomes/hg19/hg19.chrom.sizes {input.bed}.bb
+		ln -s  {params.base_path}{input.bed}.bb {output.bigBed}
+		ln -s {params.base_path}{input.bigWig} {output.bigWig}
+		rm {input.bed}TEMP
+		"""
 	
 	
