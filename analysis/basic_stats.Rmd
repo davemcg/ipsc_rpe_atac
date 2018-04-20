@@ -36,7 +36,7 @@ multiqc %>% select(Sample, `Duplication Percentage` = `FastQC_mqc-generalstats-p
 
 ## Post q5 and rmdup reads per sample
 ```{r, results='hide', echo=T}
-prod_data <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/merged_bam_HQ/x', col_names = F)
+prod_data <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/metrics/reads_by_sample.txt', col_names = F)
 colnames(prod_data) <- c('Sample','Total Reads')
 prod_data <- prod_data %>% mutate(Sample=gsub('.q5.rmdup.bam','', Sample))
 prod_data %>% DT::datatable(rownames=F, options = list(pageLength=12))
