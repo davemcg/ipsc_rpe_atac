@@ -1,0 +1,74 @@
+---
+title: "Basic Stats"
+output: 
+  html_notebook:
+    theme: flatly
+    code_folding: hide
+---
+
+iPSC / RPE ATAC-Seq
+
+## Reads per sample
+```{r, results='hide', echo=T}
+library(tidyverse)
+options(scipen=100)
+multiqc <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/fastqc/multiqc/multiqc_data/multiqc_general_stats.txt')
+multiqc %>% select(Sample, `Total Reads` = `FastQC_mqc-generalstats-total_sequences`) %>% DT::datatable(rownames=F, options = list(pageLength=12))
+multiqc %>% select(Sample, `Total Reads` = `FastQC_mqc-generalstats-total_sequences`) %>% 
+  ggplot(aes(x=Sample, y= `Total Reads`)) + 
+  scale_y_continuous(labels = scales::comma) +
+  geom_bar(stat='identity') + 
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.3, hjust=1))
+```
+## Duplication rate per sample
+```{r, results='hide', echo=T}
+multiqc %>% select(Sample, `Duplication Percentage` = `FastQC_mqc-generalstats-percent_duplicates`) %>% DT::datatable(rownames=F, options = list(pageLength=12))
+multiqc %>% select(Sample, `Duplication Percentage` = `FastQC_mqc-generalstats-percent_duplicates`) %>% 
+  ggplot(aes(x=Sample, y= `Duplication Percentage`)) + 
+  geom_bar(stat='identity') + 
+  coord_cartesian(ylim=c(0,100)) +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.3, hjust=1))
+```
+
+## Post q5 and rmdup reads per sample
+```{r, results='hide', echo=T}
+prod_data <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/metrics/reads_by_sample.txt', col_names = F)
+colnames(prod_data) <- c('Sample','Total Reads')
+prod_data <- prod_data %>% mutate(Sample=gsub('.q5.rmdup.bam','', Sample))
+prod_data %>% DT::datatable(rownames=F, options = list(pageLength=12))
+prod_data %>% 
+  ggplot(aes(x=Sample, y= `Total Reads`)) + 
+  geom_bar(stat='identity') + 
+  theme_minimal() +
+  scale_y_continuous(labels = scales::comma) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.3, hjust=1))
+```
+## Number of peaks per sample
+```{r, results='hide', echo=T}
+peak_file = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/macs_peak/', pattern='*peaks.blackListed.narrowPeak', full.names = T)
+peak =  list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/macs_peak/', pattern='*peaks.blackListed.narrowPeak', full.names = F)
+Sample = sapply(peak, function(x) str_split(x, '_peak')[[1]][1])
+peak_counts <- ''
+for (f in peak_file){
+  f <- read_tsv(f)
+  peak_counts <- c(peak_counts, nrow(f))
+}
+
+peak_data <- cbind(Sample, peak_counts[2:length(peak_counts)]) %>% data.frame()
+colnames(peak_data) <- c('Sample', "Number of Peaks")
+peak_data$`Number of Peaks` <- as.numeric(as.character(peak_data$`Number of Peaks`))
+peak_data  %>% filter(!grepl('master|union', Sample)) %>% DT::datatable(rownames = F, options = list(pageLength=12))
+peak_data %>%  
+  filter(!grepl('master|union', Sample)) %>% 
+  ggplot(aes(x=Sample, y= `Number of Peaks`)) + 
+  scale_y_continuous(labels = scales::comma) +
+  geom_bar(stat='identity') + 
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.3, hjust=1))
+```
