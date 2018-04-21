@@ -34,8 +34,8 @@ rule all:
 		'fastqc/multiqc/multiqc_report.html',
 		'deeptools/multiBamSummary.tsv',
 		'metrics/reads_by_sample.txt',
-		expand('/data/mcgaugheyd/datashare/hufnagel/{sample}.bw', sample = list(SAMPLE_PATH.keys())),
-		expand('/data/mcgaugheyd/datashare/hufnagel/{sample}_peaks.blackListed.hg19.narrowPeak.bb', sample = list(SAMPLE_PATH.keys()))
+		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}.bw', sample = list(SAMPLE_PATH.keys())),
+		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}_peaks.blackListed.hg19.narrowPeak.bb', sample = list(SAMPLE_PATH.keys()))
 
 
 rule pull_lane_bams_from_nisc:
@@ -140,7 +140,7 @@ rule downsample:
 # normalize by CPM
 rule bam_to_bigWig:
 	input:
-		'merged_bam_HQ/{sample}.q5.rmdup.ds.bam'
+		'downsample_bam/{sample}.q5.rmdup.ds.bam'
 	output:
 		bedgraph = temp('bigWig/{sample}.bG'),
 		bw = 'bigWig/{sample}.bw'
@@ -200,10 +200,10 @@ rule total_reads:
 		'metrics/reads_by_sample.txt'
 	shell:
 		"""
-		for i in {input}; do samtools idxstats $i | cut -f3 | awk 'BEGIN {total=0} {total += $1} END {print total}'; done > metrics/TEMP2
+		for i in {input}; do samtools idxstats $i | cut -f3 | awk 'BEGIN {{total=0}} {{total += $1}} END {{print total}}'; done > metrics/TEMP2
 		for i in {input}; do echo $i; done > metrics/TEMP1
 		paste metrics/TEMP1 metrics/TEMP2 > {output}
-		rm metrics/TEMP1; metrics/TEMP2
+		rm metrics/TEMP1; rm metrics/TEMP2
 		"""
 
 # macs2
@@ -321,8 +321,8 @@ rule ucsc_view:
 	params:
 		base_path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/'
 	output:
-		bigWig = '/data/mcgaugheyd/datashare/hufnagel/{sample}.bw',
-		bigBed = '/data/mcgaugheyd/datashare/hufnagel/{sample}_peaks.blackListed.hg19.narrowPeak.bb'
+		bigWig = '/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}.bw',
+		bigBed = '/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}_peaks.blackListed.hg19.narrowPeak.bb'
 	shell:
 		"""
 		module load ucsc
