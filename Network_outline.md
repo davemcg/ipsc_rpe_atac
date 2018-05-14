@@ -5,8 +5,8 @@
 3. subtract likely TSS/promoter regions
 4. ID motifs
 
-    	- YAMDA for novel
-    	- BAO (unavailable?) or CENTIPEDE for known?
+    - YAMDA for novel
+    - BAO (unavailable?) or CENTIPEDE for known?
 5. motif <	-> TF 
 
   	- unsure how...HOMER does this built in
@@ -16,7 +16,7 @@
     	- need to do some reading on enhancer / gene distances
     	- 1 mb is often used, but I'd *like* to get something a bit more rigorous
     	- Quote from someone at BoG18:
-      	- "just use closest gene, otherwise you'll never get anything done""
+      	- "just use closest gene, otherwise you'll never get anything done"
   	- perhaps overlay TAD?
     	- would be useful to parition with that
     	- even if other tissue
