@@ -1,12 +1,16 @@
 ## ATAC	| RNA-Seq Network Construction Proposal
 
 1. Align 
+    - done
 2. Peak call (homer narrow?)
+    - done
 3. subtract likely TSS/promoter regions
+    - not done (ignore for now)
 4. ID motifs
 
-    - YAMDA for novel
-    - BAO (unavailable?) or CENTIPEDE for known?
+  - fimo to ID motifs, then  
+  - YAMDA for novel
+  - BAO (unavailable?) or CENTIPEDE for known?
 5. motif <	-> TF 
 
   	- unsure how...HOMER does this built in
@@ -21,10 +25,13 @@
     	- would be useful to parition with that
     	- even if other tissue
       	- often claimed that TAD are 'highly correlated' between tissues
+    - [cisbp](http://cisbp.ccbr.utoronto.ca/bulk_archive.php) **(has matched TF!)**
+    - genehancer (already has matched enhancer <-> gene with layers of evidence)
   	- quantify gene expression 
     	- or group low / med / high?
     	- on / off?
     	- will be used below
+  
 7. Rank motifs by gene expression
 
   	- sum?
