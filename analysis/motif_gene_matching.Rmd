@@ -1,0 +1,105 @@
+---
+title: Motif / TFBS Analysis
+author: David McGaughey
+date: '`r format(Sys.Date(), "%Y-%m-%d")`'
+output: 
+  html_notebook:
+    theme: flatly
+    toc: true
+    code_folding: hide
+---
+
+# Workflow to ID motifs and match to genes
+(Full implementation in Snakefile)
+1. Download TF motifs from cisbp
+2. Check for motifs in narrow ATAC-seq peaks with fimo
+3. Identify closest 10 transcripts to each motif
+4. Bootstrap steps 2 and 3 1000 times to get background rate
+
+```{r, message=F, warning=F, include=F}
+# Load Libraries without printing any warnings or messages
+library(tidyverse)
+library(data.table)
+```
+
+# Load in real data
+```{r}
+samples_full = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/fimo_motifs/', pattern = '*dat.gz', full.names = T)
+
+fimo_data <- list()
+for (i in samples_full){
+  sample <- str_split(str_split(i, '/')[[1]][10], '\\.')[[1]][1]
+  input <- read_tsv(i)
+  input <- input %>% mutate(sequence_name = as.character(sequence_name)) %>% mutate(sample = sample)
+  fimo_data[[sample]] <- input
+}
+sample_motifs = bind_rows(fimo_data) %>% mutate(sample=as.factor(sample))
+
+sample_motifs %>% group_by(sample) %>% summarise(Count=n())
+```
+
+# Load in bootstraps
+```{r}
+samples_full = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/fimo_motifs/bootstrapping/', pattern = '*dat.gz', full.names = T)
+
+fimo_data <- list()
+for (i in samples_full){
+  sample <- str_split(str_split(i, '/')[[1]][11], '\\.')[[1]][1]
+  bootstrap_num <- str_split(str_split(str_split(i, '/')[[1]][11], '\\.')[[1]][2], '_')[[1]][2]
+  sample_boot <- paste0(sample,bootstrap_num, sep='_')
+  input <- read_tsv(i)
+  input <- input %>% mutate(sequence_name = as.character(sequence_name)) %>% mutate(sample = sample, bootstrap = bootstrap_num)
+  fimo_data[[sample_boot]] <- input
+}
+bootstrap_motifs = bind_rows(fimo_data) %>% mutate(sample=as.factor(sample))
+
+bootstrap_motifs %>% group_by(sample, bootstrap) %>% summarise(Count=n()) %>% group_by(sample) %>% summarise(Mean = mean(Count))
+```
+
+# Plot enrichment of motif/TFBS
+```{r}
+library(ggridges)
+all <- bind_rows(sample_motifs %>% mutate(bootstrap = 'real'), bootstrap_motifs)
+sample_n(all, 10)
+
+all %>% group_by(sample, bootstrap) %>% summarise(Count=n()) %>% ungroup() %>% 
+  ggplot(aes(x=Count, y=sample)) + 
+  geom_density_ridges() +
+  geom_point(data = sample_motifs %>% group_by(sample) %>% summarise(Count=n()) %>% ungroup(), aes(x=Count,y=sample), colour='red', size=2) +
+  scale_y_discrete(expand = c(0.01, 0)) +
+  theme_ridges()
+
+```
+
+
+# Gene <-> motif matching
+```{r}
+# load gtf to map transcript to gene_name
+
+gtf <- read_tsv("/Volumes/data/genomes/1000G_phase2_GRCh37/gencode.v28lift37.metadata.HGNC.gz", col_names = c('Transcript','Gene'))
+gtf <- gtf %>% rowwise() %>% mutate(transcript = ((str_split(V9, ';')[[1]] %>% str_extract('transcript_id.*') %>% na.omit())[1] %>% str_split(., '\"'))[[1]][2],
+                             gene = ((str_split(V9, ';')[[1]] %>% str_extract('gene_name.*') %>% na.omit())[1] %>% str_split(., '\"'))[[1]][2])
+```
+## Sample data
+
+```{r}
+samples_full = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/closest_TSS_motifs/', pattern = '*dat.gz', full.names = T)
+
+closestTSS_data <- list()
+for (i in samples_full){
+  sample <- str_split(str_split(i, '/')[[1]][10], '\\.')[[1]][1]
+  input <- read_tsv(i, col_names = c('sequence_name', 'start', 'end', 'motif', 'fimo_pvalue', 'strand', 'tss_seq','tss_start','tss_end', 'transcript',  'blank','tss_strand','coord1','coord2','blank2','exon_num','size','exon_pos','distance'))
+  input <- input %>% mutate(sequence_name = as.character(sequence_name), 
+                            tss_seq = as.character(tss_seq), 
+                            coord1=as.numeric(coord1), 
+                            coord2=as.numeric(coord2), 
+                            blank2 = as.character(blank2), 
+                            exon_num=as.integer(exon_num),
+                            size=as.numeric(size)) %>% mutate(sample = sample)
+  closestTSS_data[[sample]] <- input
+}
+sample_closestTSS = bind_rows(closestTSS_data) %>% mutate(sample=as.factor(sample)) %>% rowwise() %>% mutate(Transcript = str_split(transcript, '_')[[1]][1])
+
+both <- left_join(sample_closestTSS, gtf) %>% filter(!is.na(Gene))
+sample_motifs %>% group_by(sample) %>% summarise(Count=n())
+```
