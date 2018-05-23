@@ -2,15 +2,16 @@
 
 1. Align 
     - done
-2. Peak call (homer narrow?)
+2. Peak call (`homer` narrow?)
     - done
 3. subtract likely TSS/promoter regions
     - not done (ignore for now)
+4. peaks to fasta (`bedtools getfasta`)
 4. ID motifs
 
-  - fimo to ID motifs, then  
-  - YAMDA for novel
-  - BAO (unavailable?) or CENTIPEDE for known?
+  - `fimo` to ID motifs, then `CENTIPEDE` / `Mocap` to confirm binding   
+  - or YAMDA for novel
+
 5. motif <	-> TF 
 
   	- unsure how...HOMER does this built in
