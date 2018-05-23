@@ -1,8 +1,8 @@
-
 #!/bin/bash
 
 # to run snakemake as batch job
 module load snakemake || exit 1
+module load bedtools/2.27.1 
 
 mkdir -p 00log 
 sbcmd="sbatch --cpus-per-task={threads} \
@@ -15,7 +15,7 @@ sbcmd="sbatch --cpus-per-task={threads} \
 
 
 snakemake -s /home/mcgaugheyd/git/ipsc_rpe_atac/Snakefile \
--pr --local-cores 2 --jobs 1999 \
+-pr --local-cores $SLURM_CPUS_PER_TASK --jobs 1999 \
 --configfile $1 \
 --cluster-config /home/mcgaugheyd/git/ipsc_rpe_atac/cluster.json \
 --cluster "$sbcmd"  --latency-wait 120 --rerun-incomplete \

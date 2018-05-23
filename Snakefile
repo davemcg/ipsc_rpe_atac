@@ -22,7 +22,10 @@ for line in metadata:
 		old_path.append(path)
 		SAMPLE_PATH[sample] = old_path
 
-localrules: pull_lane_bams_from_nisc, retrieve_and_process_black_list, black_list, ucsc_view, total_reads, union_peaks, merge_peaks
+localrules: pull_lane_bams_from_nisc, retrieve_and_process_black_list, black_list, \
+	ucsc_view, total_reads, union_peaks, merge_peaks, bootstrap_peaks, \
+	peak_fasta_bootstrap, peak_fasta, remove_tss_promoters, build_tss_regions
+	#find_closest_TSS, find_closest_TSS_bootstrap
 
 wildcard_constraints:
 	sample='|'.join(list(SAMPLE_PATH.keys())),
@@ -35,7 +38,11 @@ rule all:
 		'deeptools/multiBamSummary.tsv',
 		'metrics/reads_by_sample.txt',
 		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}.bw', sample = list(SAMPLE_PATH.keys())),
-		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}_peaks.blackListed.hg19.narrowPeak.bb', sample = list(SAMPLE_PATH.keys()))
+		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}_peaks.blackListed.hg19.narrowPeak.bb', sample = list(SAMPLE_PATH.keys())),
+		expand('closest_TSS_motifs/{sample}.fimo.closestTSS.dat.gz', sample = list(SAMPLE_PATH.keys())),
+		expand('closest_TSS_motifs/bootstrapping/{sample}.bootstrap_{bootstrap_num}.fimo.closestTSS.dat.gz', \
+			sample = list(SAMPLE_PATH.keys()), \
+			bootstrap_num = [str(x).zfill(3) for x in list(range(1,config['motif_bootstrap_num']))])
 
 
 rule pull_lane_bams_from_nisc:
@@ -251,6 +258,155 @@ rule black_list:
 		"""
 		module load {config[bedtools_version]}
 		intersectBed -a {input.peaks} -b {input.blacklist} -v > {output}
+		"""
+
+# create 1000bp exclusion regions at the TSS
+# only use appris prinicpal transcripts
+# map chr notation to num notation
+# bed output
+rule build_tss_regions:
+	input:
+		config['gtf_file']	
+	output:
+		gene = temp('annotation/gene.bed'),
+		tss = temp('annotation/tss_hg19.bed'),
+		tssT2 = temp('annotation/tss_hg19fix2.bed'),
+		tssT3 = temp('annotation/tss_hg19fix3.bed'),
+		tssG = 'annotation/tss_GRCh37.bed'
+	shell:
+		"""
+		module load ucsc
+		zcat {input} | \
+			grep appris_principal | \
+			awk '{{if ($3 != "gene") print $0;}}' | \
+			grep -v "^#" | \
+			gtfToGenePred /dev/stdin /dev/stdout | \
+			genePredToBed stdin {output.gene}
+		awk '{{if($6 == "-") {{$2 = $3 - 1}} else {{$3 = $2 + 1}} print}}' {output.gene} | \
+			awk -v OFS='\t' '{{if($6 == "-") {{$3 = $2 + 1000}} else {{$2 = $3 - 1000}} print}}' > \
+			{output.tss}
+		awk '{{if($2 < 1) {{$2 = 1}} print}}' {output.tss} > {output.tssT2}
+		awk '{{if($3 < 1) {{$3 = 1}} print}}' {output.tssT2} > {output.tssT3}
+		/home/mcgaugheyd/git/ChromosomeMappings/convert_notation.py -f {output.tssT3} -c /home/mcgaugheyd/git/ChromosomeMappings/GRCh37_gencode2ensembl.txt > \
+			{output.tssG}
+		"""
+
+# subtract the peaks in the tss regions
+rule remove_tss_promoters:
+	input:
+		peaks = 'macs_peak/{sample}_peaks.blackListed.narrowPeak',
+		tss = 'annotation/tss_GRCh37.bed'
+	output:
+		'macs_peak/{sample}_peaks.blackListed.tss_subtract.narrowPeak'
+	shell:
+		"""
+		#module load {config[bedtools_version]}
+		bedtools subtract -a {input.peaks} -b {input.tss} > {output} 
+		"""
+
+# create n bootstraps for each peak file set
+# as background distribution for the motifs found
+# with fimo
+rule bootstrap_peaks:
+	input:
+		'macs_peak/{sample}_peaks.blackListed.tss_subtract.narrowPeak'
+	output:
+		'macs_peak/bootstrapping/{sample}_peaks.bootstrap_{bootstrap_num}.blackListed.tss_subtract.narrowPeak'
+	shell:
+		"""
+		#module load {config[bedtools_version]}
+		bedtools shuffle -excl annotation/tss_GRCh37.bed -g {config[bwa_genome_sizes]} -i {input} > {output}
+		"""
+
+# turn the peak data (minus tss) into fasta to ID motifs with fimo
+rule peak_fasta:
+	input:
+		'macs_peak/{sample}_peaks.blackListed.tss_subtract.narrowPeak'
+	output:
+		'macs_peak/fasta/{sample}_peaks.blackListed.tss_subtract.narrowPeak.fasta'
+	shell:
+		"""
+		#module load {config[bedtools_version]}
+		bedtools getfasta -fi {config[bwa_genome]} -bed {input} -fo {output}
+		"""
+
+# fimo calls motifs over a ~1e-5 threshold (based on background A-G-C-T rates)
+rule call_motifs:
+	input:
+		'macs_peak/fasta/{sample}_peaks.blackListed.tss_subtract.narrowPeak.fasta'
+	output:
+		'fimo_motifs/{sample}.fimo.dat.gz'
+	shell:
+		"""
+		module load {config[meme_version]}
+		fimo --text --parse-genomic-coord {config[master_meme_motif_file]} {input} | gzip -f > {output}
+		"""
+
+# turn the peak data (minus tss) into fasta to ID motifs with fimo
+# runs on the bootstraps
+rule peak_fasta_bootstrap:
+	input:
+		'macs_peak/bootstrapping/{sample}_peaks.bootstrap_{bootstrap_num}.blackListed.tss_subtract.narrowPeak'
+	output:
+		'macs_peak/bootstrapping/{sample}_peaks.bootstrap_{bootstrap_num}.blackListed.tss_subtract.narrowPeak.fasta'
+	shell:
+		"""
+		#module load {config[bedtools_version]}
+		bedtools getfasta -fi {config[bwa_genome]} -bed {input} -fo {output}
+		"""
+
+# fimo calls motifs over a ~1e-5 threshold (based on background A-G-C-T rates)
+# runs on the bootstraps
+rule call_motifs_bootstrap:
+	input:
+		'macs_peak/bootstrapping/{sample}_peaks.bootstrap_{bootstrap_num}.blackListed.tss_subtract.narrowPeak.fasta'
+	output:
+		'fimo_motifs/bootstrapping/{sample}.bootstrap_{bootstrap_num}.fimo.dat.gz'
+	shell:
+		"""
+		module load {config[meme_version]}
+		fimo --text --parse-genomic-coord {config[master_meme_motif_file]} {input} | gzip -f > {output}
+		"""
+
+# find closest TSS/transcript to each motif
+# finds 10 closest (-k 10)
+# why so high? because I'm thinking that a bunch of similar transcripts 
+# will artificially inflate the hits
+# I want the two closest genes
+# I'll collapse the tx into genes later in R
+rule find_closest_TSS:
+	input:
+		'fimo_motifs/{sample}.fimo.dat.gz'
+	output:
+		'closest_TSS_motifs/{sample}.fimo.closestTSS.dat.gz'
+	shell:
+		"""
+		module load {config[bedtools_version]}
+		zcat {input} | \
+			grep -v '^#' | \
+			awk -v OFS='\t' '{{print $3, $4, $5, $2, $8, $6}}' | \
+			sort -k1,1 -k2,2n | \
+					closestBed -g <( sort -k1,1 -k2,2n {config[bwa_genome_sizes]} ) \
+						-k 10 -d -a - -b <( sort -k1,1 -k2,2n annotation/tss_GRCh37.bed ) | \
+			gzip -f > {output}
+		"""
+
+# bootstrap version
+rule find_closest_TSS_bootstrap:
+	input:
+		'fimo_motifs/bootstrapping/{sample}.bootstrap_{bootstrap_num}.fimo.dat.gz'
+	output:
+		'closest_TSS_motifs/bootstrapping/{sample}.bootstrap_{bootstrap_num}.fimo.closestTSS.dat.gz'
+	shell:
+		"""
+		module load {config[bedtools_version]}
+		zcat {input} | \
+			grep -v '^#' | \
+			awk -v OFS='\t' '{{print $3, $4, $5, $2, $8, $6}}' | \
+			sort -k1,1 -k2,2n | \
+			closestBed -g <( sort -k1,1 -k2,2n {config[bwa_genome_sizes]} ) \
+				-k 10 -d -a - -b <( sort -k1,1 -k2,2n annotation/tss_GRCh37.bed ) | \
+			gzip -f > {output}
 		"""
 
 rule convert_peaks_to_hg19:
