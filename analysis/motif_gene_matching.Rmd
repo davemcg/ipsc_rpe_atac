@@ -77,13 +77,14 @@ all %>% group_by(sample, bootstrap) %>% summarise(Count=n()) %>% ungroup() %>%
 # load gtf to map transcript to gene_name
 
 gtf <- read_tsv("/Volumes/data/genomes/1000G_phase2_GRCh37/gencode.v28lift37.metadata.HGNC.gz", col_names = c('Transcript','Gene'))
-gtf <- gtf %>% rowwise() %>% mutate(transcript = ((str_split(V9, ';')[[1]] %>% str_extract('transcript_id.*') %>% na.omit())[1] %>% str_split(., '\"'))[[1]][2],
-                             gene = ((str_split(V9, ';')[[1]] %>% str_extract('gene_name.*') %>% na.omit())[1] %>% str_split(., '\"'))[[1]][2])
+# gtf <- gtf %>% rowwise() %>% mutate(transcript = ((str_split(V9, ';')[[1]] %>% str_extract('transcript_id.*') %>% na.omit())[1] %>% str_split(., '\"'))[[1]][2],
+#                              gene = ((str_split(V9, ';')[[1]] %>% str_extract('gene_name.*') %>% na.omit())[1] %>% str_split(., '\"'))[[1]][2])
 ```
 ## Sample data
-
+### Closest TSS
 ```{r}
-samples_full = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/closest_TSS_motifs/', pattern = '*dat.gz', full.names = T)
+samples_full = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/closest_TSS_motifs/', 
+                          pattern = '*dat.gz', full.names = T)
 
 closestTSS_data <- list()
 for (i in samples_full){
@@ -100,6 +101,77 @@ for (i in samples_full){
 }
 sample_closestTSS = bind_rows(closestTSS_data) %>% mutate(sample=as.factor(sample)) %>% rowwise() %>% mutate(Transcript = str_split(transcript, '_')[[1]][1])
 
-both <- left_join(sample_closestTSS, gtf) %>% filter(!is.na(Gene))
-sample_motifs %>% group_by(sample) %>% summarise(Count=n())
+both <- left_join(sample_closestTSS, gtf) %>% 
+  filter(!is.na(Gene)) %>% 
+  mutate(motif_loc = paste(sequence_name, start, end, sep='_'))
+
+both %>% 
+  # only keep one gene per motif
+  group_by(motif_loc, sample, Gene) %>% 
+  top_n(1, distance) %>% 
+  ungroup() %>% 
+  # keep up to two genes per motif
+  group_by(motif_loc, sample) %>% 
+  top_n(2, distance) %>% 
+  ungroup() %>% 
+  # arrange by genes most linked to motif  
+  group_by(Gene, sample) %>% 
+  summarise(Count=n(), paste(motif_loc, collapse=', ')) %>% 
+  arrange(-Count)
+```
+
+What genes have more PAX6 'associated* motifs compared from GFP to RFP
+```{r}
+enriched_genes <- both %>% 
+  # only keep one gene per motif
+  group_by(motif_loc, sample, Gene) %>% 
+  top_n(1, distance) %>% 
+  ungroup() %>% 
+  # keep up to two genes per motif
+  group_by(motif_loc, sample) %>% 
+  top_n(2, distance) %>% 
+  ungroup() %>% 
+  # arrange by genes most linked to motif  
+  group_by(Gene, sample) %>% 
+  summarise(Count=n(), paste(motif_loc, collapse=', ')) %>% 
+  ungroup() %>% 
+  # collapse to GFP/RFP/iPSC
+  mutate(type = case_when(grepl('GFP', sample) ~ 'GFP',
+                          grepl('RFP', sample) ~ 'RFP',
+                          TRUE ~ 'iPSC')) %>% 
+  group_by(Gene, type) %>% 
+  summarise(Total=sum(Count)) %>% 
+  arrange(-Total) %>% 
+  spread(Gene, Total) %>% t() 
+
+colnames(enriched_genes) <- enriched_genes[1,]
+enriched_genes <- enriched_genes[-1,] %>% data.frame() %>% rownames_to_column('Gene') %>%  mutate(GFP = as.numeric(GFP), iPSC = as.numeric(iPSC), RFP = as.numeric((RFP)))
+
+enriched_genes[is.na(enriched_genes)] <- 0
+
+enriched_genes %>% mutate(deltaGFP_RFP = GFP - RFP) %>% arrange(-deltaGFP_RFP, GFP) %>% head(1000) %>% DT::datatable(rownames = F)
+
+```
+
+## does PAX6 regulate PAX6?
+Yes, yes it does.
+
+GFP specific!
+```{r}
+both %>% 
+  # only keep one gene per motif
+  group_by(motif_loc, sample, Gene) %>% 
+  top_n(1, distance) %>% 
+  ungroup() %>% 
+  # keep up to two genes per motif
+  group_by(motif_loc, sample) %>% 
+  top_n(2, distance) %>% 
+  ungroup() %>% 
+  # arrange by genes most linked to motif  
+  group_by(Gene, sample) %>% 
+  summarise(Count=n(), `Motif Locations` = paste(motif_loc, collapse=', ')) %>% 
+  arrange(-Count) %>% 
+  filter(Gene=='PAX6')
+```
+
 ```
