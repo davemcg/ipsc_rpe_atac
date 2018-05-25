@@ -35,25 +35,30 @@ for (i in samples_full){
 }
 sample_motifs = bind_rows(fimo_data) %>% mutate(sample=as.factor(sample))
 
-sample_motifs %>% group_by(sample) %>% summarise(Count=n())
+sample_motifs %>% group_by(sample, motif_alt_id) %>% summarise(Count=n()) %>% arrange(-Count)
 ```
 
 # Load in bootstraps
 ```{r}
 samples_full = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/fimo_motifs/bootstrapping/', pattern = '*dat.gz', full.names = T)
 
+# big difference here vs above
+# not saving full file, as each bootstrap is ~100mb COMPRESSED
+# just saving the stats
+# right now, counts by motif/sample
 fimo_data <- list()
-for (i in samples_full){
+for (i in samples_full[1:3]){
   sample <- str_split(str_split(i, '/')[[1]][11], '\\.')[[1]][1]
   bootstrap_num <- str_split(str_split(str_split(i, '/')[[1]][11], '\\.')[[1]][2], '_')[[1]][2]
-  sample_boot <- paste0(sample,bootstrap_num, sep='_')
+  sample_boot <- paste0(sample,'_',bootstrap_num)
   input <- read_tsv(i)
   input <- input %>% mutate(sequence_name = as.character(sequence_name)) %>% mutate(sample = sample, bootstrap = bootstrap_num)
-  fimo_data[[sample_boot]] <- input
+  # collapse to just counts per motif
+  output <- input %>% group_by(sample, motif_alt_id) %>% summarise(Count=n()) %>% ungroup()
+  fimo_data[[sample_boot]] <- output
 }
 bootstrap_motifs = bind_rows(fimo_data) %>% mutate(sample=as.factor(sample))
 
-bootstrap_motifs %>% group_by(sample, bootstrap) %>% summarise(Count=n()) %>% group_by(sample) %>% summarise(Mean = mean(Count))
 ```
 
 # Plot enrichment of motif/TFBS
