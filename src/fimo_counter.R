@@ -8,9 +8,9 @@ library(tidyverse)
 
 input = read_tsv(file_name)
 
-input <- input %>% mutate(sequence_name = as.character(sequence_name)) %>% mutate(sample = sample, bootstrap = bootstrap_num)
+input <- input %>% mutate(sequence_name = as.character(sequence_name))
 # collapse to just counts per motif
 
-output <- input %>% group_by(sample, motif_alt_id) %>% summarise(Count=n()) %>% ungroup()
+output <- input %>% group_by(motif_alt_id) %>% summarise(Count=n()) %>% ungroup()
 
 write_tsv(output, path = args[2])
