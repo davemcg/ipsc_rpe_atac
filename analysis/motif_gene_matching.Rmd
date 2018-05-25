@@ -10,20 +10,23 @@ output:
 ---
 
 # Workflow to ID motifs and match to genes
+
 (Full implementation in Snakefile)
 1. Download TF motifs from cisbp
-2. Check for motifs in narrow ATAC-seq peaks with fimo
-3. Identify closest 10 transcripts to each motif
-4. Bootstrap steps 2 and 3 1000 times to get background rate
+2. Only keep TF which are abs(logFc) > 1 between GFP/RPE and iPSC (~1200)
+3. Check for motifs in narrow ATAC-seq peaks with fimo
+4. Identify closest 10 transcripts to each motif
+5. Bootstrap steps 2 and 3 100 times to get background rate
 
-```{r, message=F, warning=F, include=F}
+```{r, message=F, warning=F, results='hide'}
 # Load Libraries without printing any warnings or messages
 library(tidyverse)
-library(data.table)
+library(ggridges)
 ```
 
-# Load in real data
+# Motif/TF assessed
 ```{r}
+# Load in real data
 samples_full = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/fimo_motifs/', pattern = '*dat.gz', full.names = T)
 
 fimo_data <- list()
@@ -35,47 +38,100 @@ for (i in samples_full){
 }
 sample_motifs = bind_rows(fimo_data) %>% mutate(sample=as.factor(sample))
 
-sample_motifs %>% group_by(sample, motif_alt_id) %>% summarise(Count=n()) %>% arrange(-Count)
+#sample_motifs %>% group_by(sample, motif_alt_id) %>% summarise(Count=n()) %>% arrange(-Count)
+
+tf_motif <- sample_motifs %>% select('TF' = `# motif_id`, motif_alt_id) %>% unique()
+tf_motif %>% DT::datatable()
 ```
 
+
+```{r, warning=F, message=F, echo=F, results='hide'}
 # Load in bootstraps
-```{r}
-samples_full = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/fimo_motifs/bootstrapping/', pattern = '*dat.gz', full.names = T)
+bootstrap_stats = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/fimo_motifs/bootstrapping_stats/', pattern = '*dat.gz', full.names = T)
+#samples_full = list.files('~/Desktop/fimo_motifs/bootstrapping/', pattern = '*dat.gz', full.names = T)
 
 # big difference here vs above
-# not saving full file, as each bootstrap is ~100mb COMPRESSED
+# not saving full file, as each bootstrap is ~200mb COMPRESSED
 # just saving the stats
 # right now, counts by motif/sample
 fimo_data <- list()
-for (i in samples_full[1:3]){
+for (i in bootstrap_stats){
   sample <- str_split(str_split(i, '/')[[1]][11], '\\.')[[1]][1]
   bootstrap_num <- str_split(str_split(str_split(i, '/')[[1]][11], '\\.')[[1]][2], '_')[[1]][2]
   sample_boot <- paste0(sample,'_',bootstrap_num)
-  input <- read_tsv(i)
-  input <- input %>% mutate(sequence_name = as.character(sequence_name)) %>% mutate(sample = sample, bootstrap = bootstrap_num)
-  # collapse to just counts per motif
-  output <- input %>% group_by(sample, motif_alt_id) %>% summarise(Count=n()) %>% ungroup()
-  fimo_data[[sample_boot]] <- output
+  stats <- read_tsv(i) %>% mutate(sample = as.factor(sample), bootstrap = bootstrap_num)
+  fimo_data[[sample_boot]] <- stats
 }
-bootstrap_motifs = bind_rows(fimo_data) %>% mutate(sample=as.factor(sample))
-
+bootstrap_counts = bind_rows(fimo_data) %>% mutate(sample=as.factor(sample)) %>% left_join(tf_motif)
 ```
 
-# Plot enrichment of motif/TFBS
 ```{r}
-library(ggridges)
-all <- bind_rows(sample_motifs %>% mutate(bootstrap = 'real'), bootstrap_motifs)
-sample_n(all, 10)
+# merge sample counts with bootstrap counts
+all <- bind_rows(sample_motifs %>% group_by(sample, motif_alt_id) %>% summarise(Count=n()) %>% ungroup() %>% mutate(bootstrap = 'real'),
+                 bootstrap_counts)
 
-all %>% group_by(sample, bootstrap) %>% summarise(Count=n()) %>% ungroup() %>% 
+# motif ggridges plotter
+
+plotter <- function(motif) {
+  all %>% filter(motif_alt_id == !!motif) %>% 
   ggplot(aes(x=Count, y=sample)) + 
   geom_density_ridges() +
-  geom_point(data = sample_motifs %>% group_by(sample) %>% summarise(Count=n()) %>% ungroup(), aes(x=Count,y=sample), colour='red', size=2) +
+  geom_point(data = sample_motifs %>% filter(motif_alt_id == !!motif) %>% group_by(sample, motif_alt_id) %>% summarise(Count=n()) %>% ungroup(), aes(x=Count,y=sample), colour='red', size=2) +
   scale_y_discrete(expand = c(0.01, 0)) +
-  theme_ridges()
+  theme_ridges() + 
+  ggtitle(paste0(motif, ' (', 
+                 tf_motif %>% filter(motif_alt_id == !!motif) %>% pull(TF),
+                                     ')'))
+}
+```
+# Plot enrichment  specific motif/TFBS
 
+## TET1
+```{r}
+#all<-left_join(sample_motifs %>% group_by(sample, motif_alt_id) %>% summarise(Count=n()) %>% ungroup(), bootstrap_counts %>% group_by(motif_alt_id, sample) %>% summarise(Mean = mean(Count), TF = paste(unique(TF), collapse=',')))
+plotter('M0610_1.02')
 ```
 
+## DNMT1
+```{r}
+plotter('M0609_1.02')
+```
+
+## PAX6
+```{r}
+plotter('M6410_1.02')
+```
+
+## SOX10
+```{r}
+plotter('M6470_1.02')
+```
+
+## MITF
+```{r}
+plotter('M6345_1.02')
+```
+
+## HES1
+```{r}
+plotter('M6271_1.02')
+```
+
+## SIX3
+```{r}
+plotter('M1016_1.02')
+```
+
+## SIX2
+```{r}
+plotter('M0952_1.02')
+```
+
+# What TF/motifs are most enriched in GFP relative to RFP
+
+```{r}
+
+```
 
 # Gene <-> motif matching
 ```{r}
