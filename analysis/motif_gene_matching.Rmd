@@ -74,14 +74,18 @@ all <- bind_rows(sample_motifs %>% group_by(sample, motif_alt_id) %>% summarise(
 
 plotter <- function(motif) {
   all %>% filter(motif_alt_id == !!motif) %>% 
-  ggplot(aes(x=Count, y=sample)) + 
-  geom_density_ridges() +
-  geom_point(data = sample_motifs %>% filter(motif_alt_id == !!motif) %>% group_by(sample, motif_alt_id) %>% summarise(Count=n()) %>% ungroup(), aes(x=Count,y=sample), colour='red', size=2) +
-  scale_y_discrete(expand = c(0.01, 0)) +
-  theme_ridges() + 
-  ggtitle(paste0(motif, ' (', 
-                 tf_motif %>% filter(motif_alt_id == !!motif) %>% pull(TF),
-                                     ')'))
+    mutate(sample = factor(sample, levels=c('iPSC_IIi_9','iPSC_IIJ_10','iPSC_IIK_11','iPSC_IIL_12','RFP_IIE_1','RFP_IIF_2','RFP_IIG_3','RFP_IIH_4','GFP_IIE_5','GFP_IIF_6','GFP_IIG_7','GFP_IIH_8'))) %>% 
+    ggplot(aes(x=Count, y=sample)) + 
+    geom_density_ridges() +
+    geom_point(data = sample_motifs %>% 
+                 filter(motif_alt_id == !!motif) %>% 
+                 group_by(sample, motif_alt_id) %>%
+                 summarise(Count=n()) %>% ungroup(), aes(x=Count,y=sample), colour='blue', size=2, alpha=0.5) +
+    scale_y_discrete(expand = c(0.01, 0)) +
+    theme_ridges() + 
+    ggtitle(paste0(motif, ' (', 
+                   tf_motif %>% filter(motif_alt_id == !!motif) %>% pull(TF),
+                   ')'))
 }
 ```
 # Plot enrichment  specific motif/TFBS
