@@ -12,6 +12,7 @@ output:
 # Workflow to ID motifs and match to genes
 
 (Full implementation in Snakefile)
+
 1. Download TF motifs from cisbp
 2. Only keep TF which are abs(logFc) > 1 between GFP/RPE and iPSC (~1200)
 3. Check for motifs in narrow ATAC-seq peaks with fimo
@@ -73,20 +74,40 @@ all <- bind_rows(sample_motifs %>% group_by(sample, motif_alt_id) %>% summarise(
 
 # motif ggridges plotter
 
-plotter <- function(motif) {
-  all %>% filter(motif_alt_id == !!motif) %>% 
-    mutate(sample = factor(sample, levels=c('iPSC_IIi_9','iPSC_IIJ_10','iPSC_IIK_11','iPSC_IIL_12','RFP_IIE_1','RFP_IIF_2','RFP_IIG_3','RFP_IIH_4','GFP_IIE_5','GFP_IIF_6','GFP_IIG_7','GFP_IIH_8'))) %>% 
-    ggplot(aes(x=Count, y=sample)) + 
-    geom_density_ridges() +
-    geom_point(data = sample_motifs %>% 
-                 filter(motif_alt_id == !!motif) %>% 
-                 group_by(sample, motif_alt_id) %>%
-                 summarise(Count=n()) %>% ungroup(), aes(x=Count,y=sample), colour='blue', size=2, alpha=0.5) +
-    scale_y_discrete(expand = c(0.01, 0)) +
-    theme_ridges() + 
-    ggtitle(paste0(motif, ' (', 
-                   tf_motif %>% filter(motif_alt_id == !!motif) %>% pull(TF),
-                   ')'))
+plotter <- function(motif, scale=TRUE) {
+  if (scale == TRUE){
+    all <- all %>% filter(motif_alt_id == !!motif) %>% 
+      group_by(sample) %>% 
+      mutate(`Scaled Count` = scale(Count)) %>% 
+      ungroup() 
+    all %>% 
+      mutate(sample = factor(sample, levels=c('iPSC_IIi_9','iPSC_IIJ_10','iPSC_IIK_11','iPSC_IIL_12','RFP_IIE_1','RFP_IIF_2','RFP_IIG_3','RFP_IIH_4','GFP_IIE_5','GFP_IIF_6','GFP_IIG_7','GFP_IIH_8'))) %>% 
+      ggplot(aes(x=`Scaled Count`, y=sample)) + 
+      geom_density_ridges() +
+      geom_point(data = all %>% 
+                   filter(bootstrap == 'real', motif_alt_id == !!motif) %>% 
+                   ungroup(), aes(x=`Scaled Count`,y=sample), colour='blue', size=2, alpha=0.5) +
+      scale_y_discrete(expand = c(0.01, 0)) +
+      theme_ridges() + 
+      ggtitle(paste0(motif, ' (', 
+                     tf_motif %>% filter(motif_alt_id == !!motif) %>% pull(TF),
+                     ')'))
+  }
+  else {
+    all %>% filter(motif_alt_id == !!motif) %>% 
+      mutate(sample = factor(sample, levels=c('iPSC_IIi_9','iPSC_IIJ_10','iPSC_IIK_11','iPSC_IIL_12','RFP_IIE_1','RFP_IIF_2','RFP_IIG_3','RFP_IIH_4','GFP_IIE_5','GFP_IIF_6','GFP_IIG_7','GFP_IIH_8'))) %>% 
+      ggplot(aes(x=Count, y=sample)) + 
+      geom_density_ridges() +
+      geom_point(data = sample_motifs %>% 
+                   filter(motif_alt_id == !!motif) %>% 
+                   group_by(sample, motif_alt_id) %>%
+                   summarise(Count=n()) %>% ungroup(), aes(x=Count,y=sample), colour='blue', size=2, alpha=0.5) +
+      scale_y_discrete(expand = c(0.01, 0)) +
+      theme_ridges() + 
+      ggtitle(paste0(motif, ' (', 
+                     tf_motif %>% filter(motif_alt_id == !!motif) %>% pull(TF),
+                     ')'))
+  }
 }
 ```
 # Plot enrichment  specific motif/TFBS
@@ -156,24 +177,44 @@ FC_motif_FC <- all %>% mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
                                                     TRUE ~ 'iPSC'),
                                    Boot = case_when(bootstrap == 'real' ~ 'real',
                                                     TRUE ~ 'boot')) %>% 
+  # collapse by Type, motif, and whether bootstrap or real
   group_by(Type, motif_alt_id, Boot) %>% 
   summarise(Mean=mean(Count)) %>% 
+  # go wide
   spread(Boot, Mean) %>%
-  mutate(Delta = real / boot) %>% 
-  arrange(-Delta) %>% 
+  # so you can calculate FC
+  mutate(FC = real / boot) %>% 
+  arrange(-FC) %>% 
+  # add motif name
   left_join(tf_motif) %>% 
-  select(-boot, -real) %>% 
-  spread(Type, Delta) %>% 
+  select(-boot, -real) %>%
+  # spread again to allow for GFP vs RFP or iPSC comparisons
+  spread(Type, FC) %>% 
   filter(GFP > 1.2) %>% 
   mutate(`FC^2 GFP <-> iPSC` = GFP / iPSC, `FC^2 GFP <-> RFP` = GFP / RFP) %>% 
   arrange(-`FC^2 GFP <-> RFP`) 
 
-FC_motif_FC %>% ggplot(aes(x=`FC^2 GFP <-> RFP`)) + geom_density(fill='gray') + theme_minimal()
+plot1 <- FC_motif_FC %>% 
+  ggplot(aes(x=`FC^2 GFP <-> RFP`)) + 
+  geom_density(fill='gray') + 
+  theme_minimal() + 
+  geom_vline(xintercept = 1.2, color='blue')
+plot1
 ```
 
 # Distribution of *relative* TFBS/motif enrichment *between* GFP <-> iPSC
 ```{r}
-FC_motif_FC %>% ggplot(aes(x=`FC^2 GFP <-> iPSC`)) + geom_density(fill='gray') + theme_minimal()
+plot2 <- FC_motif_FC %>% 
+  ggplot(aes(x=`FC^2 GFP <-> iPSC`)) + 
+  geom_density(fill='gray') + 
+  theme_minimal()+ 
+  geom_vline(xintercept = 1.2, color = 'blue')
+plot2 
+```
+
+## Both together
+```{r}
+plot_grid(plot1 + coord_cartesian(xlim=c(0.5,5.5)), plot2 + coord_cartesian(xlim=c(0.5,5.5)), nrow = 2, align = 'hv', axis='tblr')
 ```
 
 
