@@ -22,10 +22,11 @@ output:
 # Load Libraries without printing any warnings or messages
 library(tidyverse)
 library(ggridges)
+library(cowplot)
 ```
 
 # Motif/TF assessed
-```{r}
+```{r, results = 'hide'}
 # Load in real data
 samples_full = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/fimo_motifs/', pattern = '*dat.gz', full.names = T)
 
@@ -92,7 +93,6 @@ plotter <- function(motif) {
 
 ## TET1
 ```{r}
-#all<-left_join(sample_motifs %>% group_by(sample, motif_alt_id) %>% summarise(Count=n()) %>% ungroup(), bootstrap_counts %>% group_by(motif_alt_id, sample) %>% summarise(Mean = mean(Count), TF = paste(unique(TF), collapse=',')))
 plotter('M0610_1.02')
 ```
 
@@ -131,10 +131,77 @@ plotter('M1016_1.02')
 plotter('M0952_1.02')
 ```
 
-# What TF/motifs are most enriched in GFP relative to RFP
-
+# Distribution of TFBS/motif enrichment
 ```{r}
+delta_motif_FC <- all %>% mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
+                                                    grepl('RFP', sample) ~ 'RFP',
+                                                    TRUE ~ 'iPSC'),
+                                   Boot = case_when(bootstrap == 'real' ~ 'real',
+                                                    TRUE ~ 'boot')) %>% 
+  group_by(Type, motif_alt_id, Boot) %>% 
+  summarise(Mean=mean(Count)) %>% 
+  spread(Boot, Mean) %>%
+  ungroup() %>% 
+  mutate(FC = real / boot, Type = factor(Type, levels=c('iPSC','RFP','GFP'))) %>% 
+  arrange(-FC) %>% 
+  left_join(tf_motif) %>% 
+  select(-boot, -real) 
 
+delta_motif_FC %>% ggplot(aes(y=Type, x=FC)) + geom_density_ridges() + theme_ridges()
+```
+# Distribution of *relative* TFBS/motif enrichment *between* GFP <-> RFP
+```{r}
+FC_motif_FC <- all %>% mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
+                                                    grepl('RFP', sample) ~ 'RFP',
+                                                    TRUE ~ 'iPSC'),
+                                   Boot = case_when(bootstrap == 'real' ~ 'real',
+                                                    TRUE ~ 'boot')) %>% 
+  group_by(Type, motif_alt_id, Boot) %>% 
+  summarise(Mean=mean(Count)) %>% 
+  spread(Boot, Mean) %>%
+  mutate(Delta = real / boot) %>% 
+  arrange(-Delta) %>% 
+  left_join(tf_motif) %>% 
+  select(-boot, -real) %>% 
+  spread(Type, Delta) %>% 
+  filter(GFP > 1.2) %>% 
+  mutate(`FC^2 GFP <-> iPSC` = GFP / iPSC, `FC^2 GFP <-> RFP` = GFP / RFP) %>% 
+  arrange(-`FC^2 GFP <-> RFP`) 
+
+FC_motif_FC %>% ggplot(aes(x=`FC^2 GFP <-> RFP`)) + geom_density(fill='gray') + theme_minimal()
+```
+
+# Distribution of *relative* TFBS/motif enrichment *between* GFP <-> iPSC
+```{r}
+FC_motif_FC %>% ggplot(aes(x=`FC^2 GFP <-> iPSC`)) + geom_density(fill='gray') + theme_minimal()
+```
+
+
+# What TFBS/motifs are most enriched between...?
+
+
+## Motifs/TFBS higher in GFP than RFP 
+```{r}
+#all<-left_join(sample_motifs %>% group_by(sample, motif_alt_id) %>% summarise(Count=n()) %>% ungroup(), bootstrap_counts %>% group_by(motif_alt_id, sample) %>% summarise(Mean = mean(Count), TF = paste(unique(TF), collapse=',')))
+
+ 
+FC_motif_FC %>% filter(GFP > 1.2) %>% head(1000) %>% DT::datatable()                                          
+```
+
+## Motifs/TFBS higher in RFP than GFP 
+```{r}
+FC_motif_FC %>% filter(GFP > 1.2) %>% arrange(`FC^2 GFP <-> RFP`) %>% head(100) %>% DT::datatable()                                          
+```
+
+## Plots of the top motifs enriched in GFP relative to RFP
+```{r, fig.height=3, fig.width=6}
+plots <- list()
+for (i in FC_motif_FC %>% filter(GFP > 1.2) %>% head(n=6) %>% pull(motif_alt_id)){
+  plots[[i]] <- plotter(i)
+}
+
+
+plot_grid(plotlist = plots)
 ```
 
 # Gene <-> motif matching
