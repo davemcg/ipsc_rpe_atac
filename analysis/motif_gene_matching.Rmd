@@ -77,16 +77,16 @@ all <- bind_rows(sample_motifs %>% group_by(sample, motif_alt_id) %>% summarise(
 plotter <- function(motif, scale=TRUE) {
   if (scale == TRUE){
     all <- all %>% filter(motif_alt_id == !!motif) %>% 
-      group_by(sample) %>% 
-      mutate(`Scaled Count` = scale(Count)) %>% 
+      group_by(sample, motif_alt_id) %>% 
+      mutate(`Z score` = scale(Count)) %>% 
       ungroup() 
     all %>% 
       mutate(sample = factor(sample, levels=c('iPSC_IIi_9','iPSC_IIJ_10','iPSC_IIK_11','iPSC_IIL_12','RFP_IIE_1','RFP_IIF_2','RFP_IIG_3','RFP_IIH_4','GFP_IIE_5','GFP_IIF_6','GFP_IIG_7','GFP_IIH_8'))) %>% 
-      ggplot(aes(x=`Scaled Count`, y=sample)) + 
+      ggplot(aes(x=`Z score`, y=sample)) + 
       geom_density_ridges() +
       geom_point(data = all %>% 
                    filter(bootstrap == 'real', motif_alt_id == !!motif) %>% 
-                   ungroup(), aes(x=`Scaled Count`,y=sample), colour='blue', size=2, alpha=0.5) +
+                   ungroup(), aes(x=`Z score`,y=sample), colour='blue', size=2, alpha=0.5) +
       scale_y_discrete(expand = c(0.01, 0)) +
       theme_ridges() + 
       ggtitle(paste0(motif, ' (', 
@@ -238,7 +238,7 @@ FC_motif_FC %>% filter(GFP > 1.2) %>% arrange(`FC^2 GFP <-> RFP`) %>% head(100) 
 ```{r, fig.height=3, fig.width=6}
 plots <- list()
 for (i in FC_motif_FC %>% filter(GFP > 1.2) %>% head(n=6) %>% pull(motif_alt_id)){
-  plots[[i]] <- plotter(i)
+  plots[[i]] <- plotter(i, scale=T)
 }
 
 
