@@ -160,6 +160,7 @@ delta_motif_FC <- all %>% mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
                                    Boot = case_when(bootstrap == 'real' ~ 'real',
                                                     TRUE ~ 'boot')) %>% 
   group_by(Type, motif_alt_id, Boot) %>% 
+  mutate(`Z score` = scale(Count))
   summarise(Mean=mean(Count)) %>% 
   spread(Boot, Mean) %>%
   ungroup() %>% 
@@ -169,6 +170,42 @@ delta_motif_FC <- all %>% mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
   select(-boot, -real) 
 
 delta_motif_FC %>% ggplot(aes(y=Type, x=FC)) + geom_density_ridges() + theme_ridges()
+```
+
+# Volcano Plot of Z score vs fold chance
+```{r}
+Z_scoring <- all %>% mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
+                                                    grepl('RFP', sample) ~ 'RFP',
+                                                    TRUE ~ 'iPSC'),
+                                   Boot = case_when(bootstrap == 'real' ~ 'real',
+                                                    TRUE ~ 'boot')) %>% 
+  # collapse by Type, motif, and whether bootstrap or real
+  group_by(Type, motif_alt_id) %>% 
+  mutate(`Z score` = scale(Count)) %>% 
+  filter(Boot == 'real') %>% 
+  group_by(Type, motif_alt_id) %>% 
+  summarise(`Mean Z` = mean(`Z score`)) %>% 
+  left_join(tf_motif)
+
+FC_motif <- all %>% mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
+                                                    grepl('RFP', sample) ~ 'RFP',
+                                                    TRUE ~ 'iPSC'),
+                                   Boot = case_when(bootstrap == 'real' ~ 'real',
+                                                    TRUE ~ 'boot')) %>% 
+  # collapse by Type, motif, and whether bootstrap or real
+  group_by(Type, motif_alt_id, Boot) %>% 
+  summarise(Mean=mean(Count)) %>% 
+  # go wide
+  spread(Boot, Mean) %>%
+  # so you can calculate FC
+  mutate(FC = real / boot) %>% 
+  arrange(-FC) %>% 
+  # add motif name
+  left_join(tf_motif) 
+
+
+left_join(FC_motif, Z_scoring) %>% filter(Type=='GFP') %>% 
+  ggplot(aes(x=log2(FC),y=abs(`Mean Z`))) + geom_point()
 ```
 # Distribution of *relative* TFBS/motif enrichment *between* GFP <-> RFP
 ```{r}
