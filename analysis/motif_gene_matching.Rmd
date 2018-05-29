@@ -24,6 +24,8 @@ output:
 library(tidyverse)
 library(ggridges)
 library(cowplot)
+library(DESeq2)
+library(ggrepel)
 ```
 
 # Motif/TF assessed
@@ -64,6 +66,7 @@ for (i in bootstrap_stats){
   stats <- read_tsv(i) %>% mutate(sample = as.factor(sample), bootstrap = bootstrap_num)
   fimo_data[[sample_boot]] <- stats
 }
+1
 bootstrap_counts = bind_rows(fimo_data) %>% mutate(sample=as.factor(sample)) %>% left_join(tf_motif)
 ```
 
@@ -153,6 +156,7 @@ plotter('M0952_1.02')
 ```
 
 # Distribution of TFBS/motif enrichment
+## Fold Change
 ```{r}
 delta_motif_FC <- all %>% mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
                                                     grepl('RFP', sample) ~ 'RFP',
@@ -160,7 +164,7 @@ delta_motif_FC <- all %>% mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
                                    Boot = case_when(bootstrap == 'real' ~ 'real',
                                                     TRUE ~ 'boot')) %>% 
   group_by(Type, motif_alt_id, Boot) %>% 
-  mutate(`Z score` = scale(Count))
+  mutate(`Z score` = scale(Count)) %>% 
   summarise(Mean=mean(Count)) %>% 
   spread(Boot, Mean) %>%
   ungroup() %>% 
@@ -169,43 +173,24 @@ delta_motif_FC <- all %>% mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
   left_join(tf_motif) %>% 
   select(-boot, -real) 
 
-delta_motif_FC %>% ggplot(aes(y=Type, x=FC)) + geom_density_ridges() + theme_ridges()
+delta_motif_FC %>% ggplot(aes(y=Type, x=log2(FC))) + geom_density_ridges() + theme_ridges() 
+
+delta_motif_FC %>% ggplot(aes(y=Type, x=FC)) + geom_density_ridges() + theme_ridges() 
 ```
 
-# Volcano Plot of Z score vs fold chance
+
+
 ```{r}
-Z_scoring <- all %>% mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
-                                                    grepl('RFP', sample) ~ 'RFP',
-                                                    TRUE ~ 'iPSC'),
-                                   Boot = case_when(bootstrap == 'real' ~ 'real',
-                                                    TRUE ~ 'boot')) %>% 
+# calculate z scores for all
+Z_scoring <- all %>% 
   # collapse by Type, motif, and whether bootstrap or real
-  group_by(Type, motif_alt_id) %>% 
+  group_by(sample, motif_alt_id) %>% 
   mutate(`Z score` = scale(Count)) %>% 
-  filter(Boot == 'real') %>% 
-  group_by(Type, motif_alt_id) %>% 
-  summarise(`Mean Z` = mean(`Z score`)) %>% 
+  filter(bootstrap == 'real') %>% 
+  select(-bootstrap, -TF) %>% 
   left_join(tf_motif)
 
-FC_motif <- all %>% mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
-                                                    grepl('RFP', sample) ~ 'RFP',
-                                                    TRUE ~ 'iPSC'),
-                                   Boot = case_when(bootstrap == 'real' ~ 'real',
-                                                    TRUE ~ 'boot')) %>% 
-  # collapse by Type, motif, and whether bootstrap or real
-  group_by(Type, motif_alt_id, Boot) %>% 
-  summarise(Mean=mean(Count)) %>% 
-  # go wide
-  spread(Boot, Mean) %>%
-  # so you can calculate FC
-  mutate(FC = real / boot) %>% 
-  arrange(-FC) %>% 
-  # add motif name
-  left_join(tf_motif) 
-
-
-left_join(FC_motif, Z_scoring) %>% filter(Type=='GFP') %>% 
-  ggplot(aes(x=log2(FC),y=abs(`Mean Z`))) + geom_point()
+Z_scoring %>% head()
 ```
 # Distribution of *relative* TFBS/motif enrichment *between* GFP <-> RFP
 ```{r}
@@ -254,32 +239,81 @@ plot2
 plot_grid(plot1 + coord_cartesian(xlim=c(0.5,5.5)), plot2 + coord_cartesian(xlim=c(0.5,5.5)), nrow = 2, align = 'hv', axis='tblr')
 ```
 
+# DESeq2-based analysis
+I realized that motifs by samples is similar to genes by samples
 
-# What TFBS/motifs are most enriched between...?
-
-
-## Motifs/TFBS higher in GFP than RFP 
+We are dropping RFP II E because from the plots, seems rarely enriched in anything
 ```{r}
-#all<-left_join(sample_motifs %>% group_by(sample, motif_alt_id) %>% summarise(Count=n()) %>% ungroup(), bootstrap_counts %>% group_by(motif_alt_id, sample) %>% summarise(Mean = mean(Count), TF = paste(unique(TF), collapse=',')))
+cts <- all %>% filter(bootstrap=='real') %>% spread(sample, Count) %>% select(-bootstrap, -TF) %>% data.frame()
+row.names(cts) <- cts$motif_alt_id
+cts %>% head()
+cts <- cts[,-1]
 
- 
-FC_motif_FC %>% filter(GFP > 1.2) %>% head(1000) %>% DT::datatable()                                          
+coldata <- all %>% select(sample) %>% unique() %>% filter(sample!='RFP_IIE_1') %>% mutate(Type =  case_when(grepl('GFP', sample) ~ 'GFP',
+                                                                            grepl('RFP', sample) ~ 'RFP',
+                                                                            TRUE ~ 'iPSC'))
+
+dds <- DESeqDataSetFromMatrix(countData = cts %>% select(one_of(as.character(coldata$sample)) ),
+                              colData = coldata,
+                              design = ~ Type)
+dds$Type <- relevel(dds$Type, ref='RFP')
+dds <- DESeq(dds)
+
+res <- results(DESeq(dds))
+resLFC <- lfcShrink(dds, coef='Type_GFP_vs_RFP', type='apeglm')
+plotMA(resLFC)
+plot(hist(resLFC$pvalue))
+
+```
+## Table of results
+The `Z score` is the number of standard deviation of motifs found in the sample peaks above the random set of peaks
+```{r}
+results <- resLFC %>% 
+  data.frame() %>% 
+  rownames_to_column('motif_alt_id') %>% 
+  left_join(tf_motif) %>% 
+  arrange(pvalue) %>% 
+  data.frame() %>% 
+  left_join(Z_scoring %>%  mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
+                          grepl('RFP', sample) ~ 'RFP',
+                          TRUE ~ 'iPSC')) %>% 
+              filter(Type=='GFP') %>% group_by(motif_alt_id) %>% summarise(`Z score` = mean(`Z score`)))
+results %>% filter((`Z score`) > 2.5) %>% arrange(pvalue) %>% DT::datatable()
 ```
 
-## Motifs/TFBS higher in RFP than GFP 
+## Volcano
 ```{r}
-FC_motif_FC %>% filter(GFP > 1.2) %>% arrange(`FC^2 GFP <-> RFP`) %>% head(100) %>% DT::datatable()                                          
+volcano_maker <- function(df, title){
+  df$Class <- 'Not significant'
+  df$Class[df$padj < 0.01 & df$log2FoldChange > 0.4 & (df$`Z score`) > 2.5] <- "FDR < 0.01 &\nabs(Z score) > 2.5"
+  df$Class[df$padj < 0.01 & df$log2FoldChange < -0.4 & (df$`Z score`) > 2.5] <- "FDR < 0.01 &\nabs(Z score) > 2.5"
+  df$Class <- factor(df$Class, levels=c('Not significant', "FDR < 0.01 &\nabs(Z score) > 2.5"))
+  plot <- ggplot(data=df,aes(x=log2FoldChange,y=-log10(pvalue))) + 
+    geom_point(aes(colour=Class, size=`Z score`), alpha=0.5) +
+    scale_colour_manual(values=c("gray","darkred")) + 
+    geom_text_repel(data=df %>% filter((padj < 0.01 & log2FoldChange > 0.4 & `Z score` > 2.5) | (padj < 0.01 & log2FoldChange < -0.4 & `Z score` > 2.5)), 
+                    aes(label=TF)) +
+    # geom_vline(aes(xintercept=-0.5),linetype="dotted") +
+    # geom_vline(aes(xintercept=0.5),linetype="dotted") +
+    scale_x_continuous(breaks=c(-1,-0.5,0,0.5,1)) +
+    ggtitle(title) + theme_minimal()
+  return(plot)
+}
+volcano_maker(results, 'GFP vs RFP TFBS motif counts')
+
 ```
 
-## Plots of the top motifs enriched in GFP relative to RFP
-```{r, fig.height=3, fig.width=6}
+
+## Plots of the top motifs different between GFP and RFP
+RFP II E is plotted here, but not used in the differential analysis above
+```{r, fig.height=5, fig.width=6}
 plots <- list()
-for (i in FC_motif_FC %>% filter(GFP > 1.2) %>% head(n=6) %>% pull(motif_alt_id)){
+for (i in results %>% filter((`Z score`) > 2) %>% arrange(pvalue) %>% head(n=12) %>% pull(motif_alt_id)){
   plots[[i]] <- plotter(i, scale=T)
 }
 
 
-plot_grid(plotlist = plots)
+plot_grid(plotlist = plots, ncol=3)
 ```
 
 # Gene <-> motif matching
@@ -291,7 +325,7 @@ gtf <- read_tsv("/Volumes/data/genomes/1000G_phase2_GRCh37/gencode.v28lift37.met
 #                              gene = ((str_split(V9, ';')[[1]] %>% str_extract('gene_name.*') %>% na.omit())[1] %>% str_split(., '\"'))[[1]][2])
 ```
 ## Sample data
-### Closest TSS
+### Closest TSS for OTX2 (M5700_1.02)
 ```{r}
 samples_full = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/closest_TSS_motifs/', 
                           pattern = '*dat.gz', full.names = T)
@@ -299,12 +333,14 @@ samples_full = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq
 closestTSS_data <- list()
 for (i in samples_full){
   sample <- str_split(str_split(i, '/')[[1]][10], '\\.')[[1]][1]
-  input <- read_tsv(i, col_names = c('sequence_name', 'start', 'end', 'motif', 'fimo_pvalue', 'strand', 'tss_seq','tss_start','tss_end', 'transcript',  'blank','tss_strand','coord1','coord2','blank2','exon_num','size','exon_pos','distance'))
-  input <- input %>% mutate(sequence_name = as.character(sequence_name), 
-                            tss_seq = as.character(tss_seq), 
-                            coord1=as.numeric(coord1), 
-                            coord2=as.numeric(coord2), 
-                            blank2 = as.character(blank2), 
+ # input <- read_tsv(i, col_names = c('sequence_name', 'start', 'end', 'motif', 'fimo_pvalue', 'strand', 'tss_seq','tss_start','tss_end', 'transcript',  'blank','tss_strand','coord1','coord2','blank2','exon_num','size','exon_pos','distance'))
+  input <- fread(paste('gzcat', i, '| grep M5700_1'))
+  colnames(input) <- c('sequence_name', 'start', 'end', 'motif', 'fimo_pvalue', 'strand', 'tss_seq','tss_start','tss_end', 'transcript',  'blank','tss_strand','coord1','coord2','blank2','exon_num','size','exon_pos','distance')
+  input <- input %>% mutate(sequence_name = as.character(sequence_name),
+                            tss_seq = as.character(tss_seq),
+                            coord1=as.numeric(coord1),
+                            coord2=as.numeric(coord2),
+                            blank2 = as.character(blank2),
                             exon_num=as.integer(exon_num),
                             size=as.numeric(size)) %>% mutate(sample = sample)
   closestTSS_data[[sample]] <- input
@@ -318,11 +354,11 @@ both <- left_join(sample_closestTSS, gtf) %>%
 both %>% 
   # remove any TSS over 500kb away
   filter(distance < 500000) %>% 
-  # only keep one gene per motif
+  #  one gene per motif
   group_by(motif_loc, sample, Gene) %>% 
   top_n(1, distance) %>% 
   ungroup() %>% 
-  # keep up to two genes per motif
+  # add up to two genes (total) per motif
   group_by(motif_loc, sample) %>% 
   top_n(2, distance) %>% 
   ungroup() %>% 
@@ -348,10 +384,10 @@ enriched_genes <- both %>%
   summarise(Count=n(), paste(motif_loc, collapse=', ')) %>% 
   ungroup() %>% 
   # collapse to GFP/RFP/iPSC
-  mutate(type = case_when(grepl('GFP', sample) ~ 'GFP',
+  mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
                           grepl('RFP', sample) ~ 'RFP',
                           TRUE ~ 'iPSC')) %>% 
-  group_by(Gene, type) %>% 
+  group_by(Gene, Type) %>% 
   summarise(Total=sum(Count)) %>% 
   arrange(-Total) %>% 
   spread(Gene, Total) %>% t() 
