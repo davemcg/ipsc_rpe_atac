@@ -34,15 +34,15 @@ write_tsv(both %>%
             # remove any TSS over 500kb away
             filter(distance < 500000) %>% 
             #  one gene per motif
-            group_by(motif_loc, sample, Gene) %>% 
+            group_by(motif_loc, Gene) %>% 
             top_n(1, distance) %>% 
             ungroup() %>% 
             # add up to two genes (total) per motif
-            group_by(motif_loc, sample) %>% 
+            group_by(motif_loc) %>% 
             top_n(2, distance) %>% 
             ungroup() %>% 
             # arrange by genes most linked to motif  
-            group_by(Gene, sample) %>% 
+            group_by(Gene) %>% 
             summarise(Count=n(), paste(motif_loc, collapse=', ')) %>% 
             arrange(-Count), 
           path = output_name)
