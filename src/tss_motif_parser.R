@@ -4,13 +4,13 @@
 args = commandArgs(trailingOnly=TRUE)
 
 file_name = args[1]
-gtf = args[2]
+gtf_path = args[2]
 output_name = args[3]
 
 library(tidyverse)
 
 # load gtf to get gene name 
-gtf <- read_tsv(gtf, col_names = c('Transcript','Gene')) #"/data/mcgaugheyd/genomes/1000G_phase2_GRCh37/gencode.v28lift37.metadata.HGNC.gz"
+gtf <- read_tsv(gtf_path, col_names = c('Transcript','Gene'))
 
 # load in nearest tss motif info
 sample <- str_split(str_split(file_name, '/')[[1]][2], '\\.')[[1]][1]
@@ -30,23 +30,26 @@ both <- left_join(input, gtf) %>%
   filter(!is.na(Gene)) %>% 
   mutate(motif_loc = paste(sequence_name, start, end, sep='_'))
 
-# both %>% 
-#   # remove any TSS over 500kb away
-#   filter(distance < 500000) %>% 
-#   #  one gene per motif
-#   group_by(motif_loc, Gene) %>% 
-#   top_n(1, distance) %>% 
-#   ungroup() %>% 
-#   # add up to two genes (total) per motif
-#   group_by(motif_loc) %>% 
-#   top_n(2, distance) %>% 
-#   ungroup() %>% 
-#   # arrange by genes most linked to motif  
-#   group_by(Gene) %>% 
-#   summarise(Count=n(), paste(motif_loc, collapse=', ')) %>% 
+out <- both %>%
+  # remove any TSS over 500kb away
+  filter(distance < 500000) %>%
+  #  one gene per motif
+  group_by(motif_loc, Gene) %>%
+  top_n(1, distance) %>%
+  ungroup() %>%
+  # add up to two genes (total) per motif
+  group_by(motif_loc) %>%
+  top_n(2, distance) %>%
+  ungroup() %>%
+  # arrange by genes most linked to motif
+  group_by(Gene) %>% 
+  select(sample, sequence_name, start, end, motif, fimo_pvalue, strand, Transcript, Gene, distance, motif_loc)
+
+# %>%
+#   summarise(Count=n(), Motif_Regions = paste(motif_loc, collapse=', ')) %>%
 #   arrange(-Count)
 
-write_tsv(both, 
+write_tsv(out, 
           path = output_name)
 
 
