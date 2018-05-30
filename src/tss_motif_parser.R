@@ -13,7 +13,7 @@ library(tidyverse)
 gtf <- read_tsv(gtf, col_names = c('Transcript','Gene')) #"/data/mcgaugheyd/genomes/1000G_phase2_GRCh37/gencode.v28lift37.metadata.HGNC.gz"
 
 # load in nearest tss motif info
-sample <- str_split(str_split(file_name, '/')[[1]][10], '\\.')[[1]][1]
+sample <- str_split(str_split(file_name, '/')[[1]][2], '\\.')[[1]][1]
 input <- read_tsv(file_name, col_names = c('sequence_name', 'start', 'end', 'motif', 'fimo_pvalue', 'strand', 'tss_seq','tss_start','tss_end', 'transcript',  'blank','tss_strand','coord1','coord2','blank2','exon_num','size','exon_pos','distance'))
 input <- input %>% mutate(sequence_name = as.character(sequence_name),
                           tss_seq = as.character(tss_seq),
@@ -26,7 +26,7 @@ input <- input %>% mutate(sequence_name = as.character(sequence_name),
   rowwise() %>% 
   mutate(Transcript = str_split(transcript, '_')[[1]][1])
 
-both <- left_join(sample_closestTSS, gtf) %>% 
+both <- left_join(input, gtf) %>% 
   filter(!is.na(Gene)) %>% 
   mutate(motif_loc = paste(sequence_name, start, end, sep='_'))
 
