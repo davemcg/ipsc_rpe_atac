@@ -7,11 +7,19 @@ file_name = args[1]
 gtf_path = args[2]
 output_name = args[3]
 
+
+print(file_name)
+print(gtf_path)
+print(output_name)
+
+
 library(tidyverse)
+
 
 # load gtf to get gene name 
 gtf <- read_tsv(gtf_path, col_names = c('Transcript','Gene'))
 print(head(gtf))
+
 # load in nearest tss motif info
 sample <- str_split(str_split(file_name, '/')[[1]][2], '\\.')[[1]][1]
 input <- read_tsv(file_name, col_names = c('sequence_name', 'start', 'end', 'motif', 'fimo_pvalue', 'strand', 'tss_seq','tss_start','tss_end', 'transcript',  'blank','tss_strand','coord1','coord2','blank2','exon_num','size','exon_pos','distance'))

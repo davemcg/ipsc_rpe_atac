@@ -24,5 +24,14 @@
 	{
 		"partition" : "quick",
 		"time" : "04:00:00"
+	},
+	"call_motifs_bootstrap" :
+	{
+		"partition" : "norm",
+		"time" : "08:00:00"
+	},
+	"process_closest_TSS_data" :
+	{
+		"mem" : "32G"
 	}
 }

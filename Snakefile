@@ -24,7 +24,8 @@ for line in metadata:
 
 localrules: pull_lane_bams_from_nisc, retrieve_and_process_black_list, black_list, \
 	ucsc_view, total_reads, union_peaks, merge_peaks, bootstrap_peaks, \
-	peak_fasta_bootstrap, peak_fasta, remove_tss_promoters, build_tss_regions
+	peak_fasta_bootstrap, peak_fasta, remove_tss_promoters, build_tss_regions, \
+	build_cisbp_master_file
 	#find_closest_TSS, find_closest_TSS_bootstrap
 
 wildcard_constraints:
@@ -42,8 +43,12 @@ rule all:
 		expand('closest_TSS_motifs/{sample}.fimo.closestTSS.dat.gz', sample = list(SAMPLE_PATH.keys())),
 		expand('closest_TSS_motifs/bootstrapping/{sample}.bootstrap_{bootstrap_num}.fimo.closestTSS.dat.gz', \
 			sample = list(SAMPLE_PATH.keys()), \
-			bootstrap_num = [str(x).zfill(3) for x in list(range(1,config['motif_bootstrap_num']))])
-
+			bootstrap_num = [str(x).zfill(3) for x in list(range(1,config['motif_bootstrap_num']))]),
+		expand('fimo_motifs/bootstrapping_stats/{sample}.bootstrap_{bootstrap_num}.fimo_counts.dat.gz', \
+			sample = list(SAMPLE_PATH.keys()), \
+			bootstrap_num = [str(x).zfill(3) for x in list(range(1,config['motif_bootstrap_num']))]),
+		expand('closest_TSS_motifs/processed/{sample}.fimo.closestTSS.processed.dat.gz',
+			sample = list(SAMPLE_PATH.keys()))
 
 rule pull_lane_bams_from_nisc:
 	output:
@@ -261,6 +266,8 @@ rule black_list:
 		"""
 
 # create 1000bp exclusion regions at the TSS
+# these are promoters (which are also open)
+# we want enhancers
 # only use appris prinicpal transcripts
 # map chr notation to num notation
 # bed output
@@ -330,16 +337,58 @@ rule peak_fasta:
 		bedtools getfasta -fi {config[bwa_genome]} -bed {input} -fo {output}
 		"""
 
+# identify TF which have differential expression
+# with RNA-seq data
+# will only use TF motifs which have a abs(log2FC) > 1 between iPSC and RPE (GFP / RFP)
+# diff expression data derived from 01_simple_analysis.Rmd from ipsc_ rpe_RNA-seq repo
+rule build_cisbp_master_file:
+	input:
+		config['diff_expression_csv']
+	output:
+		motifs = temp('tf.motifs'),
+		diff_gene = temp('diff.gene'),
+		join = temp('result.join'),
+		meme = 'master_motifs.meme'
+	params:
+		diff_exp = config['diff_expression_value']
+	run:
+		shell("awk '{{print $7, $4}}' {config[cisbp_metadata_file]} /data/mcgaugheyd/motifs/TF_Information.txt | sort | uniq | grep -v '\.$'  > {output.motifs}")
+		shell("awk -F, '{{if($3 > {params.diff_exp}  || $3 < -{params.diff_exp}) {{print $1}}}}'  {input}  > diff.gene")
+		shell("join <( sort -k1,1 diff.gene ) <( sort -k1,1 tf.motifs) > {output.join}")
+		join = open(output.join)
+		meme_base_path = config['meme_cisbp_path'] #'/data/mcgaugheyd/motifs/meme_motifs'
+		header = 'MEME version 4\n\nALPHABET= ACGT\n\nstrands: + -\n\nBackground letter frequencies (from uniform background):\nA 0.25000 C 0.25000 G 0.25000 T 0.25000\n\n'
+		output = open(output.meme, 'w')
+		output.write(header)
+		for line in join:
+			line = line.split()
+			gene = line[0]
+			motif = line[1]
+			try:
+				meme_file = open(meme_base_path + '/' + motif + '.meme')
+				contents = meme_file.readlines()
+				index = [ind for ind, line in enumerate(contents) if 'letter-prob' in line][0]
+				if index != '':
+					output.write('MOTIF ' + gene + ' ' + motif + '\n\n')
+					output.write(''.join(contents[index:]))
+			except:
+				print(motif + ' not present')
+		output.close()
+			
+		
+		
+
 # fimo calls motifs over a ~1e-5 threshold (based on background A-G-C-T rates)
 rule call_motifs:
 	input:
-		'macs_peak/fasta/{sample}_peaks.blackListed.tss_subtract.narrowPeak.fasta'
+		fasta = 'macs_peak/fasta/{sample}_peaks.blackListed.tss_subtract.narrowPeak.fasta',
+		meme_file = 'master_motifs.meme'
 	output:
 		'fimo_motifs/{sample}.fimo.dat.gz'
 	shell:
 		"""
 		module load {config[meme_version]}
-		fimo --text --parse-genomic-coord {config[master_meme_motif_file]} {input} | gzip -f > {output}
+		fimo --no-qvalue --max-stored-scores 1000000 --text --parse-genomic-coord {input.meme_file} {input.fasta} | gzip -f > {output}
 		"""
 
 # turn the peak data (minus tss) into fasta to ID motifs with fimo
@@ -359,14 +408,28 @@ rule peak_fasta_bootstrap:
 # runs on the bootstraps
 rule call_motifs_bootstrap:
 	input:
-		'macs_peak/bootstrapping/{sample}_peaks.bootstrap_{bootstrap_num}.blackListed.tss_subtract.narrowPeak.fasta'
+		fasta = 'macs_peak/bootstrapping/{sample}_peaks.bootstrap_{bootstrap_num}.blackListed.tss_subtract.narrowPeak.fasta',
+		meme_file = 'master_motifs.meme'
 	output:
 		'fimo_motifs/bootstrapping/{sample}.bootstrap_{bootstrap_num}.fimo.dat.gz'
 	shell:
 		"""
 		module load {config[meme_version]}
-		fimo --text --parse-genomic-coord {config[master_meme_motif_file]} {input} | gzip -f > {output}
+		fimo --no-qvalue --max-stored-scores 1000000 --text --parse-genomic-coord {input.meme_file} {input.fasta} | gzip -f > {output}
 		"""
+
+# get stats per bootstrap file
+rule bootstrap_stats:
+	input:
+		'fimo_motifs/bootstrapping/{sample}.bootstrap_{bootstrap_num}.fimo.dat.gz'
+	output:
+		'fimo_motifs/bootstrapping_stats/{sample}.bootstrap_{bootstrap_num}.fimo_counts.dat.gz'
+	shell:
+		"""
+		module load {config[R_version]}
+		Rscript ~/git/ipsc_rpe_atac/src/fimo_counter.R {input} {output}
+		"""
+
 
 # find closest TSS/transcript to each motif
 # finds 10 closest (-k 10)
@@ -407,6 +470,20 @@ rule find_closest_TSS_bootstrap:
 			closestBed -g <( sort -k1,1 -k2,2n {config[bwa_genome_sizes]} ) \
 				-k 10 -d -a - -b <( sort -k1,1 -k2,2n annotation/tss_GRCh37.bed ) | \
 			gzip -f > {output}
+		"""
+
+# parses find_closet_TSS with R
+# pretty slow to do on local comp
+# so let's make the cluster do it
+rule process_closest_TSS_data:
+	input:
+		'closest_TSS_motifs/{sample}.fimo.closestTSS.dat.gz'
+	output:
+		'closest_TSS_motifs/processed/{sample}.fimo.closestTSS.processed.dat.gz'
+	shell:
+		"""
+		module load {config[R_version]}
+		Rscript ~/git/ipsc_rpe_atac/src/tss_motif_parser.R {input} {config[gtf_metadata]} {output} 
 		"""
 
 rule convert_peaks_to_hg19:

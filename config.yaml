@@ -9,6 +9,11 @@ bedtools_version: 'bedtools/2.27.1'
 deeptools_version: 'deeptools/3.0.1'
 mosdepth_version: 'mosdepth/0.2.0'
 meme_version: 'meme/4.12.0'
-master_meme_motif_file: '/data/mcgaugheyd/motifs/meme_motifs/M6410_1.02.meme'
-motif_bootstrap_num: 100
+motif_bootstrap_num: 2
 gtf_file: '/data/mcgaugheyd/genomes/1000G_phase2_GRCh37/gencode.v28lift37.basic.annotation.gtf.gz'
+gtf_metadata: '/data/mcgaugheyd/genomes/1000G_phase2_GRCh37/gencode.v28lift37.metadata.HGNC.gz'
+diff_expression_value: 1
+diff_expression_csv: '/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/RPE_vs_iPSC.results.csv'
+cisbp_metadata_file: '/data/mcgaugheyd/motifs/TF_Information.txt'
+meme_cisbp_path: '/data/mcgaugheyd/motifs/meme_motifs'
+R_version: 'R/3.4.3_gcc-4.9.1'
