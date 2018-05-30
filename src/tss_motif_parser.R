@@ -53,5 +53,6 @@ print(head(out))
 print(dim(out))
 write_tsv(out, 
           path = output_name)
+save(out, file = paste0(output_name,'.rdata' ))
 
 
