@@ -16,8 +16,8 @@ output:
 1. Download TF motifs from cisbp
 2. Only keep TF which are abs(logFc) > 1 between GFP/RPE and iPSC (~1200)
 3. Check for motifs in narrow ATAC-seq peaks with fimo
-4. Identify closest 10 transcripts to each motif
-5. Bootstrap steps 2 and 3 100 times to get background rate
+4. Identify closest 2 genes (under 500k bp) to each motif
+5. Bootstrap steps 2 and 3 250 times each to get background rate
 
 ```{r, message=F, warning=F, results='hide'}
 # Load Libraries without printing any warnings or messages
@@ -265,6 +265,14 @@ plotMA(resLFC)
 plot(hist(resLFC$pvalue))
 
 ```
+
+```{r}
+# Load in RNA-seq data
+gfp_rfp <- read_csv('~/git/ipsc_rpe_RNA-seq/data/GFP_vs_RFP.results.csv')
+rpe_ipsc <- read_csv('~/git/ipsc_rpe_RNA-seq/data/RPE_vs_iPSC.results.csv')
+gfp_rfp %>% head()
+```
+
 ## Table of results
 The `Z score` is the number of standard deviation of motifs found in the sample peaks above the random set of peaks
 ```{r}
@@ -277,7 +285,8 @@ results <- resLFC %>%
   left_join(Z_scoring %>%  mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
                           grepl('RFP', sample) ~ 'RFP',
                           TRUE ~ 'iPSC')) %>% 
-              filter(Type=='GFP') %>% group_by(motif_alt_id) %>% summarise(`Z score` = mean(`Z score`)))
+              filter(Type=='GFP') %>% group_by(motif_alt_id) %>% summarise(`Z score` = mean(`Z score`))) %>% 
+  left_join(gfp_rfp %>% mutate(TF=Gene, log2FC_GFP_RFP_RNASeq = log2FoldChange) %>% select(TF, log2FC_GFP_RFP_RNASeq)) 
 results %>% filter((`Z score`) > 2.5) %>% arrange(pvalue) %>% DT::datatable()
 ```
 
@@ -316,110 +325,117 @@ for (i in results %>% filter((`Z score`) > 2) %>% arrange(pvalue) %>% head(n=12)
 plot_grid(plotlist = plots, ncol=3)
 ```
 
-# Gene <-> motif matching
+
 ```{r}
+# Gene <-> motif matching
 # load gtf to map transcript to gene_name
 
 gtf <- read_tsv("/Volumes/data/genomes/1000G_phase2_GRCh37/gencode.v28lift37.metadata.HGNC.gz", col_names = c('Transcript','Gene'))
 # gtf <- gtf %>% rowwise() %>% mutate(transcript = ((str_split(V9, ';')[[1]] %>% str_extract('transcript_id.*') %>% na.omit())[1] %>% str_split(., '\"'))[[1]][2],
 #                              gene = ((str_split(V9, ';')[[1]] %>% str_extract('gene_name.*') %>% na.omit())[1] %>% str_split(., '\"'))[[1]][2])
 ```
+
+```{r}
 ## Sample data
 ### Closest TSS for OTX2 (M5700_1.02)
-```{r}
-samples_full = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/closest_TSS_motifs/', 
-                          pattern = '*dat.gz', full.names = T)
 
-closestTSS_data <- list()
-for (i in samples_full){
-  sample <- str_split(str_split(i, '/')[[1]][10], '\\.')[[1]][1]
- # input <- read_tsv(i, col_names = c('sequence_name', 'start', 'end', 'motif', 'fimo_pvalue', 'strand', 'tss_seq','tss_start','tss_end', 'transcript',  'blank','tss_strand','coord1','coord2','blank2','exon_num','size','exon_pos','distance'))
-  input <- fread(paste('gzcat', i, '| grep M5700_1'))
-  colnames(input) <- c('sequence_name', 'start', 'end', 'motif', 'fimo_pvalue', 'strand', 'tss_seq','tss_start','tss_end', 'transcript',  'blank','tss_strand','coord1','coord2','blank2','exon_num','size','exon_pos','distance')
-  input <- input %>% mutate(sequence_name = as.character(sequence_name),
-                            tss_seq = as.character(tss_seq),
-                            coord1=as.numeric(coord1),
-                            coord2=as.numeric(coord2),
-                            blank2 = as.character(blank2),
-                            exon_num=as.integer(exon_num),
-                            size=as.numeric(size)) %>% mutate(sample = sample)
-  closestTSS_data[[sample]] <- input
-}
-sample_closestTSS = bind_rows(closestTSS_data) %>% mutate(sample=as.factor(sample)) %>% rowwise() %>% mutate(Transcript = str_split(transcript, '_')[[1]][1])
-
-both <- left_join(sample_closestTSS, gtf) %>% 
-  filter(!is.na(Gene)) %>% 
-  mutate(motif_loc = paste(sequence_name, start, end, sep='_'))
-
-both %>% 
-  # remove any TSS over 500kb away
-  filter(distance < 500000) %>% 
-  #  one gene per motif
-  group_by(motif_loc, sample, Gene) %>% 
-  top_n(1, distance) %>% 
-  ungroup() %>% 
-  # add up to two genes (total) per motif
-  group_by(motif_loc, sample) %>% 
-  top_n(2, distance) %>% 
-  ungroup() %>% 
-  # arrange by genes most linked to motif  
-  group_by(Gene, sample) %>% 
-  summarise(Count=n(), paste(motif_loc, collapse=', ')) %>% 
-  arrange(-Count)
+# samples_full = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/closest_TSS_motifs/', 
+#                           pattern = '*dat.gz', full.names = T)
+# 
+# closestTSS_data <- list()
+# for (i in samples_full){
+#   sample <- str_split(str_split(i, '/')[[1]][10], '\\.')[[1]][1]
+#  # input <- read_tsv(i, col_names = c('sequence_name', 'start', 'end', 'motif', 'fimo_pvalue', 'strand', 'tss_seq','tss_start','tss_end', 'transcript',  'blank','tss_strand','coord1','coord2','blank2','exon_num','size','exon_pos','distance'))
+#   input <- fread(paste('gzcat', i, '| grep M5700_1'))
+#   colnames(input) <- c('sequence_name', 'start', 'end', 'motif', 'fimo_pvalue', 'strand', 'tss_seq','tss_start','tss_end', 'transcript',  'blank','tss_strand','coord1','coord2','blank2','exon_num','size','exon_pos','distance')
+#   input <- input %>% mutate(sequence_name = as.character(sequence_name),
+#                             tss_seq = as.character(tss_seq),
+#                             coord1=as.numeric(coord1),
+#                             coord2=as.numeric(coord2),
+#                             blank2 = as.character(blank2),
+#                             exon_num=as.integer(exon_num),
+#                             size=as.numeric(size)) %>% mutate(sample = sample)
+#   closestTSS_data[[sample]] <- input
+# }
+# sample_closestTSS = bind_rows(closestTSS_data) %>% mutate(sample=as.factor(sample)) %>% rowwise() %>% mutate(Transcript = str_split(transcript, '_')[[1]][1])
+# 
+# both <- left_join(sample_closestTSS, gtf) %>% 
+#   filter(!is.na(Gene)) %>% 
+#   mutate(motif_loc = paste(sequence_name, start, end, sep='_'))
+# 
+# both %>% 
+#   # remove any TSS over 500kb away
+#   filter(distance < 500000) %>% 
+#   #  one gene per motif
+#   group_by(motif_loc, sample, Gene) %>% 
+#   top_n(1, distance) %>% 
+#   ungroup() %>% 
+#   # add up to two genes (total) per motif
+#   group_by(motif_loc, sample) %>% 
+#   top_n(2, distance) %>% 
+#   ungroup() %>% 
+#   # arrange by genes most linked to motif  
+#   group_by(Gene, sample) %>% 
+#   summarise(Count=n(), paste(motif_loc, collapse=', ')) %>% 
+#   arrange(-Count)
 ```
 
-What genes have more PAX6 'associated' motifs compared from GFP to RFP
 ```{r}
-enriched_genes <- both %>% 
-  # only keep one gene per motif
-  group_by(motif_loc, sample, Gene) %>% 
-  top_n(1, distance) %>% 
-  ungroup() %>% 
-  # keep up to two genes per motif
-  group_by(motif_loc, sample) %>% 
-  top_n(2, distance) %>% 
-  ungroup() %>% 
-  # arrange by genes most linked to motif  
-  group_by(Gene, sample) %>% 
-  summarise(Count=n(), paste(motif_loc, collapse=', ')) %>% 
-  ungroup() %>% 
-  # collapse to GFP/RFP/iPSC
-  mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
-                          grepl('RFP', sample) ~ 'RFP',
-                          TRUE ~ 'iPSC')) %>% 
-  group_by(Gene, Type) %>% 
-  summarise(Total=sum(Count)) %>% 
-  arrange(-Total) %>% 
-  spread(Gene, Total) %>% t() 
 
-colnames(enriched_genes) <- enriched_genes[1,]
-enriched_genes <- enriched_genes[-1,] %>% data.frame() %>% rownames_to_column('Gene') %>%  mutate(GFP = as.numeric(GFP), iPSC = as.numeric(iPSC), RFP = as.numeric((RFP)))
+# What genes have more PAX6 'associated' motifs compared from GFP to RFP
 
-enriched_genes[is.na(enriched_genes)] <- 0
-
-enriched_genes %>% mutate(`deltaGFP <-> RFP` = GFP - RFP) %>% arrange(-`deltaGFP <-> RFP`, GFP) %>% head(1000) %>% DT::datatable(rownames = F)
+# enriched_genes <- both %>% 
+#   # only keep one gene per motif
+#   group_by(motif_loc, sample, Gene) %>% 
+#   top_n(1, distance) %>% 
+#   ungroup() %>% 
+#   # keep up to two genes per motif
+#   group_by(motif_loc, sample) %>% 
+#   top_n(2, distance) %>% 
+#   ungroup() %>% 
+#   # arrange by genes most linked to motif  
+#   group_by(Gene, sample) %>% 
+#   summarise(Count=n(), paste(motif_loc, collapse=', ')) %>% 
+#   ungroup() %>% 
+#   # collapse to GFP/RFP/iPSC
+#   mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
+#                           grepl('RFP', sample) ~ 'RFP',
+#                           TRUE ~ 'iPSC')) %>% 
+#   group_by(Gene, Type) %>% 
+#   summarise(Total=sum(Count)) %>% 
+#   arrange(-Total) %>% 
+#   spread(Gene, Total) %>% t() 
+# 
+# colnames(enriched_genes) <- enriched_genes[1,]
+# enriched_genes <- enriched_genes[-1,] %>% data.frame() %>% rownames_to_column('Gene') %>%  mutate(GFP = as.numeric(GFP), iPSC = as.numeric(iPSC), RFP = as.numeric((RFP)))
+# 
+# enriched_genes[is.na(enriched_genes)] <- 0
+# 
+# enriched_genes %>% mutate(`deltaGFP <-> RFP` = GFP - RFP) %>% arrange(-`deltaGFP <-> RFP`, GFP) %>% head(1000) %>% DT::datatable(rownames = F)
 
 ```
 
+
+```{r}
 ## does PAX6 regulate PAX6?
-Yes, yes it does.
+#Yes, yes it does.
 
-GFP specific!
-```{r}
-both %>% 
-  # only keep one gene per motif
-  group_by(motif_loc, sample, Gene) %>% 
-  top_n(1, distance) %>% 
-  ungroup() %>% 
-  # keep up to two genes per motif
-  group_by(motif_loc, sample) %>% 
-  top_n(2, distance) %>% 
-  ungroup() %>% 
-  # arrange by genes most linked to motif  
-  group_by(Gene, sample) %>% 
-  summarise(Count=n(), `Motif Locations` = paste(motif_loc, collapse=', ')) %>% 
-  arrange(-Count) %>% 
-  filter(Gene=='PAX6')
+#GFP specific!
+  
+# both %>% 
+#   # only keep one gene per motif
+#   group_by(motif_loc, sample, Gene) %>% 
+#   top_n(1, distance) %>% 
+#   ungroup() %>% 
+#   # keep up to two genes per motif
+#   group_by(motif_loc, sample) %>% 
+#   top_n(2, distance) %>% 
+#   ungroup() %>% 
+#   # arrange by genes most linked to motif  
+#   group_by(Gene, sample) %>% 
+#   summarise(Count=n(), `Motif Locations` = paste(motif_loc, collapse=', ')) %>% 
+#   arrange(-Count) %>% 
+#   filter(Gene=='PAX6')
 ```
 
 ```
