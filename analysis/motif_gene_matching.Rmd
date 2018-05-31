@@ -335,49 +335,38 @@ gtf <- read_tsv("/Volumes/data/genomes/1000G_phase2_GRCh37/gencode.v28lift37.met
 #                              gene = ((str_split(V9, ';')[[1]] %>% str_extract('gene_name.*') %>% na.omit())[1] %>% str_split(., '\"'))[[1]][2])
 ```
 
-```{r}
-## Sample data
-### Closest TSS for OTX2 (M5700_1.02)
+## Closest TSS for OTX2 (M5700_1.02)
 
-# samples_full = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/closest_TSS_motifs/', 
-#                           pattern = '*dat.gz', full.names = T)
-# 
-# closestTSS_data <- list()
-# for (i in samples_full){
-#   sample <- str_split(str_split(i, '/')[[1]][10], '\\.')[[1]][1]
-#  # input <- read_tsv(i, col_names = c('sequence_name', 'start', 'end', 'motif', 'fimo_pvalue', 'strand', 'tss_seq','tss_start','tss_end', 'transcript',  'blank','tss_strand','coord1','coord2','blank2','exon_num','size','exon_pos','distance'))
-#   input <- fread(paste('gzcat', i, '| grep M5700_1'))
-#   colnames(input) <- c('sequence_name', 'start', 'end', 'motif', 'fimo_pvalue', 'strand', 'tss_seq','tss_start','tss_end', 'transcript',  'blank','tss_strand','coord1','coord2','blank2','exon_num','size','exon_pos','distance')
-#   input <- input %>% mutate(sequence_name = as.character(sequence_name),
-#                             tss_seq = as.character(tss_seq),
-#                             coord1=as.numeric(coord1),
-#                             coord2=as.numeric(coord2),
-#                             blank2 = as.character(blank2),
-#                             exon_num=as.integer(exon_num),
-#                             size=as.numeric(size)) %>% mutate(sample = sample)
-#   closestTSS_data[[sample]] <- input
-# }
-# sample_closestTSS = bind_rows(closestTSS_data) %>% mutate(sample=as.factor(sample)) %>% rowwise() %>% mutate(Transcript = str_split(transcript, '_')[[1]][1])
-# 
-# both <- left_join(sample_closestTSS, gtf) %>% 
-#   filter(!is.na(Gene)) %>% 
-#   mutate(motif_loc = paste(sequence_name, start, end, sep='_'))
-# 
-# both %>% 
-#   # remove any TSS over 500kb away
-#   filter(distance < 500000) %>% 
-#   #  one gene per motif
-#   group_by(motif_loc, sample, Gene) %>% 
-#   top_n(1, distance) %>% 
-#   ungroup() %>% 
-#   # add up to two genes (total) per motif
-#   group_by(motif_loc, sample) %>% 
-#   top_n(2, distance) %>% 
-#   ungroup() %>% 
-#   # arrange by genes most linked to motif  
-#   group_by(Gene, sample) %>% 
-#   summarise(Count=n(), paste(motif_loc, collapse=', ')) %>% 
-#   arrange(-Count)
+```{r}
+
+
+samples_full = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/closest_TSS_motifs/processed/',
+                          pattern = '*dat.gz', full.names = T)
+
+samples_full = list.files('/Volumes/McGaughey_S/closest_TSS_motifs/processed/',
+                          pattern = '*rdata', full.names = T)
+
+closestTSS_data <- list()
+for (i in samples_full){
+  sample <- str_split(str_split(i, '/')[[1]][7], '\\.')[[1]][1]
+  #input <- read_tsv(i, col_names = c('sample','sequence_name','start','end','motif','fimo_pvalue','strand','Transcript','Gene','distance','motif_loc'))
+  load(i)
+  closestTSS_data[[sample]] <- out
+}
+rm(out)
+
+sample_closestTSS = bind_rows(closestTSS_data) %>% mutate(sample=as.factor(sample))
+
+sample_closestTSS %>% 
+  filter(motif == 'M5700_1.02') %>% 
+  mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
+                           grepl('RFP', sample) ~ 'RFP',
+                           TRUE ~ 'iPSC')) %>% 
+  group_by(Gene, sample, Type) %>%
+  summarise(Count=n(), motifs = paste(motif_loc, collapse=', ')) %>%
+  group_by(Gene, Type) %>% 
+  summarise(`Mean Count` = mean(Count), motifs = paste(motifs, collapse=',') ) %>% 
+  arrange(-`Mean Count`)
 ```
 
 ```{r}
