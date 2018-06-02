@@ -31,28 +31,34 @@ library(ggrepel)
 # Motif/TF assessed
 ```{r, results = 'hide'}
 # Load in real data
-samples_full = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/fimo_motifs/', pattern = '*dat.gz', full.names = T)
+#samples_full = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/fimo_motifs/', pattern = '*dat.gz', full.names = T)
+
+samples_full = list.files('/Volumes/McGaughey_S/fimo_motifs/', pattern = '*dat.gz', full.names = T)
 
 fimo_data <- list()
 for (i in samples_full){
-  sample <- str_split(str_split(i, '/')[[1]][10], '\\.')[[1]][1]
+  sample <- str_split(str_split(i, '/')[[1]][6], '\\.')[[1]][1]
   input <- read_tsv(i)
   input <- input %>% mutate(sequence_name = as.character(sequence_name)) %>% mutate(sample = sample)
   fimo_data[[sample]] <- input
 }
 sample_motifs = bind_rows(fimo_data) %>% mutate(sample=as.factor(sample))
+rm(fimo_data)
 
 #sample_motifs %>% group_by(sample, motif_alt_id) %>% summarise(Count=n()) %>% arrange(-Count)
 
-tf_motif <- sample_motifs %>% select('TF' = `# motif_id`, motif_alt_id) %>% unique()
+#tf_motif <- sample_motifs %>% select('TF' = `# motif_id`, motif_alt_id) %>% unique()
+#save(tf_motif, '~/git/ipsc_rpe_atac/data/tf_motif.Rdata')
+load('~/git/ipsc_rpe_atac/data/tf_motif.Rdata')
+
 tf_motif %>% DT::datatable()
 ```
 
 
 ```{r, warning=F, message=F, echo=F, results='hide'}
 # Load in bootstraps
-bootstrap_stats = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/fimo_motifs/bootstrapping_stats/', pattern = '*dat.gz', full.names = T)
-#samples_full = list.files('~/Desktop/fimo_motifs/bootstrapping/', pattern = '*dat.gz', full.names = T)
+#bootstrap_stats = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/fimo_motifs/bootstrapping_stats/', pattern = '*dat.gz', full.names = T)
+bootstrap_stats = list.files('/Volumes/McGaughey_S/fimo_motifs/bootstrapping_stats/', pattern = '*dat.gz', full.names = T)
 
 # big difference here vs above
 # not saving full file, as each bootstrap is ~200mb COMPRESSED
@@ -60,8 +66,8 @@ bootstrap_stats = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_
 # right now, counts by motif/sample
 fimo_data <- list()
 for (i in bootstrap_stats){
-  sample <- str_split(str_split(i, '/')[[1]][11], '\\.')[[1]][1]
-  bootstrap_num <- str_split(str_split(str_split(i, '/')[[1]][11], '\\.')[[1]][2], '_')[[1]][2]
+  sample <- str_split(str_split(i, '/')[[1]][7], '\\.')[[1]][1]
+  bootstrap_num <- str_split(str_split(str_split(i, '/')[[1]][7], '\\.')[[1]][2], '_')[[1]][2]
   sample_boot <- paste0(sample,'_',bootstrap_num)
   stats <- read_tsv(i) %>% mutate(sample = as.factor(sample), bootstrap = bootstrap_num)
   fimo_data[[sample_boot]] <- stats
@@ -262,7 +268,7 @@ dds <- DESeq(dds)
 res <- results(DESeq(dds))
 resLFC <- lfcShrink(dds, coef='Type_GFP_vs_RFP', type='apeglm')
 plotMA(resLFC)
-plot(hist(resLFC$pvalue))
+plot(hist(resLFC$pvalue, breaks=1000))
 
 ```
 
@@ -330,7 +336,7 @@ plot_grid(plotlist = plots, ncol=3)
 # Gene <-> motif matching
 # load gtf to map transcript to gene_name
 
-gtf <- read_tsv("/Volumes/data/genomes/1000G_phase2_GRCh37/gencode.v28lift37.metadata.HGNC.gz", col_names = c('Transcript','Gene'))
+gtf <- read_tsv("ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_28/GRCh37_mapping/gencode.v28lift37.metadata.HGNC.gz", col_names = c('Transcript','Gene'))
 # gtf <- gtf %>% rowwise() %>% mutate(transcript = ((str_split(V9, ';')[[1]] %>% str_extract('transcript_id.*') %>% na.omit())[1] %>% str_split(., '\"'))[[1]][2],
 #                              gene = ((str_split(V9, ';')[[1]] %>% str_extract('gene_name.*') %>% na.omit())[1] %>% str_split(., '\"'))[[1]][2])
 ```
@@ -338,10 +344,8 @@ gtf <- read_tsv("/Volumes/data/genomes/1000G_phase2_GRCh37/gencode.v28lift37.met
 ## Closest TSS for OTX2 (M5700_1.02)
 
 ```{r}
-
-
-samples_full = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/closest_TSS_motifs/processed/',
-                          pattern = '*dat.gz', full.names = T)
+#samples_full = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/closest_TSS_motifs/processed/',
+#                          pattern = '*dat.gz', full.names = T)
 
 samples_full = list.files('/Volumes/McGaughey_S/closest_TSS_motifs/processed/',
                           pattern = '*rdata', full.names = T)
@@ -351,14 +355,15 @@ for (i in samples_full){
   sample <- str_split(str_split(i, '/')[[1]][7], '\\.')[[1]][1]
   #input <- read_tsv(i, col_names = c('sample','sequence_name','start','end','motif','fimo_pvalue','strand','Transcript','Gene','distance','motif_loc'))
   load(i)
-  closestTSS_data[[sample]] <- out
+  out_some <- out %>% filter(motif == 'M5700_1.02')
+  closestTSS_data[[sample]] <- out_some
 }
 rm(out)
 
 sample_closestTSS = bind_rows(closestTSS_data) %>% mutate(sample=as.factor(sample))
 
 sample_closestTSS %>% 
-  filter(motif == 'M5700_1.02') %>% 
+  #filter(motif == 'M5700_1.02') %>% 
   mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
                            grepl('RFP', sample) ~ 'RFP',
                            TRUE ~ 'iPSC')) %>% 
