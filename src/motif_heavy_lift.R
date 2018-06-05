@@ -25,7 +25,6 @@ sample_motifs = bind_rows(fimo_data) %>% mutate(sample=as.factor(sample))
 rm(fimo_data)
 
 tf_motif <- sample_motifs %>% select('TF' = `# motif_id`, motif_alt_id) %>% unique()
-save(tf_motif, '~/git/ipsc_rpe_atac/data/tf_motif.Rdata')
 #load('~/git/ipsc_rpe_atac/data/tf_motif.Rdata')
 
 #########################
@@ -119,3 +118,4 @@ save(resLFC, file='/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/Rdat
 save(dds, file='/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/Rdata/dds.Rdata')
 sample_bootstrap_counts <- all
 save(sample_bootstrap_counts, file='/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/Rdata/sample_bootstrap_counts.Rdata')
+save(tf_motif, file='~/git/ipsc_rpe_atac/data/tf_motif.Rdata')
