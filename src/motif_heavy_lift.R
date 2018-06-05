@@ -1,6 +1,6 @@
 # Rscript to do the heavy analysis
 
-
+setwd('/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq')
 library(tidyverse)
 library(ggridges)
 library(cowplot)
@@ -24,9 +24,9 @@ for (i in samples_full){
 sample_motifs = bind_rows(fimo_data) %>% mutate(sample=as.factor(sample))
 rm(fimo_data)
 
-#tf_motif <- sample_motifs %>% select('TF' = `# motif_id`, motif_alt_id) %>% unique()
-#save(tf_motif, '~/git/ipsc_rpe_atac/data/tf_motif.Rdata')
-load('~/git/ipsc_rpe_atac/data/tf_motif.Rdata')
+tf_motif <- sample_motifs %>% select('TF' = `# motif_id`, motif_alt_id) %>% unique()
+save(tf_motif, '~/git/ipsc_rpe_atac/data/tf_motif.Rdata')
+#load('~/git/ipsc_rpe_atac/data/tf_motif.Rdata')
 
 #########################
 # Load in bootstraps
@@ -114,7 +114,8 @@ sample_closestTSS = bind_rows(closestTSS_data) %>% mutate(sample=as.factor(sampl
 #############################
 # Save data
 #############################
-save(sample_closestTSS, file='/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/sample_closestTSS.Rdata')
-save(resLFC, file='/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/resLFC.Rdata')
+save(sample_closestTSS, file='/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/Rdata/sample_closestTSS.Rdata')
+save(resLFC, file='/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/Rdata/resLFC.Rdata')
+save(dds, file='/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/Rdata/dds.Rdata')
 sample_bootstrap_counts <- all
-save(sample_bootstrap_counts, file='/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/sample_bootstrap_counts.Rdata')
+save(sample_bootstrap_counts, file='/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/Rdata/sample_bootstrap_counts.Rdata')
