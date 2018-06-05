@@ -77,9 +77,6 @@ dds <- DESeqDataSetFromMatrix(countData = cts %>% select(one_of(as.character(col
 dds$Type <- relevel(dds$Type, ref='RFP')
 dds <- DESeq(dds)
 
-res <- results(DESeq(dds))
-resLFC <- lfcShrink(dds, coef='Type_GFP_vs_RFP', type='apeglm')
-
 
 ###########################################
 # Load in RNA-seq data
@@ -114,7 +111,6 @@ sample_closestTSS = bind_rows(closestTSS_data) %>% mutate(sample=as.factor(sampl
 # Save data
 #############################
 save(sample_closestTSS, file='/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/Rdata/sample_closestTSS.Rdata')
-save(resLFC, file='/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/Rdata/resLFC.Rdata')
 save(dds, file='/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/Rdata/dds.Rdata')
 sample_bootstrap_counts <- all
 save(sample_bootstrap_counts, file='/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/Rdata/sample_bootstrap_counts.Rdata')
