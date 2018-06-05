@@ -1,0 +1,207 @@
+---
+title: Motif / TFBS Stats
+author: David McGaughey
+date: '`r format(Sys.Date(), "%Y-%m-%d")`'
+output: 
+  html_notebook:
+    theme: flatly
+    toc: true
+    code_folding: hide
+---
+
+
+```{r, message=F, warning=F, results='hide'}
+# Load Libraries without printing any warnings or messages
+library(tidyverse)
+library(ggridges)
+library(cowplot)
+library(DESeq2)
+library(ggrepel)
+```
+```{r}
+# load precomputed data from src/motif_heavy_lift.R
+load('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/Rdata/resLFC.Rdata')
+load('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/Rdata/dds.Rdata')
+load('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/Rdata/sample_bootstrap_counts.Rdata')
+load('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/Rdata/sample_closestTSS.Rdata')
+load('~/git/ipsc_rpe_atac/data/tf_motif.Rdata')
+```
+
+# Motif/TF assessed
+There are ~3,000 in cis-bp
+
+I've filtered it down to ~1,000 by only including TF that are log2FC > 1 between RPE <-> iPSC or GFP+ <-> RFP+
+
+```{r, results = 'hide'}
+tf_motif %>% DT::datatable()
+```
+
+```{r}
+# motif ggridges plotter
+# removes GFP 
+plotterGi <- function(motif, scale=TRUE) {
+  if (scale == TRUE){
+    sample_bootstrap_counts <- sample_bootstrap_counts %>% filter(motif_alt_id == !!motif) %>% 
+      filter(!grepl('RFP',sample)) %>% 
+      group_by(sample, motif_alt_id) %>% 
+      mutate(`Z score` = scale(Count)) %>% 
+      ungroup() 
+    sample_bootstrap_counts %>% 
+      filter(!grepl('RFP',sample)) %>% 
+      #mutate(sample = factor(sample, levels=c('iPSC_IIi_9','iPSC_IIJ_10','iPSC_IIK_11','iPSC_IIL_12','RFP_IIE_1','RFP_IIF_2','RFP_IIG_3','RFP_IIH_4','GFP_IIE_5','GFP_IIF_6','GFP_IIG_7','GFP_IIH_8'))) %>% 
+      mutate(sample = factor(sample, levels=c('iPSC_IIi_9','iPSC_IIJ_10','iPSC_IIK_11','iPSC_IIL_12','GFP_IIE_5','GFP_IIF_6','GFP_IIG_7','GFP_IIH_8'))) %>% 
+      ggplot(aes(x=`Z score`, y=sample)) + 
+      geom_density_ridges() +
+      geom_point(data = sample_bootstrap_counts %>% 
+                   filter(bootstrap == 'real', motif_alt_id == !!motif) %>% 
+                   ungroup(), aes(x=`Z score`,y=sample), colour='blue', size=2, alpha=0.5) +
+      scale_y_discrete(expand = c(0.01, 0)) +
+      theme_ridges() + 
+      ggtitle(paste0(motif, ' (', 
+                     tf_motif %>% filter(motif_alt_id == !!motif) %>% pull(TF),
+                     ')'))
+  }
+  else {
+    sample_bootstrap_counts %>% filter(motif_alt_id == !!motif) %>% 
+      filter(!grepl('RFP',sample)) %>% 
+      #mutate(sample = factor(sample, levels=c('iPSC_IIi_9','iPSC_IIJ_10','iPSC_IIK_11','iPSC_IIL_12','RFP_IIE_1','RFP_IIF_2','RFP_IIG_3','RFP_IIH_4','GFP_IIE_5','GFP_IIF_6','GFP_IIG_7','GFP_IIH_8'))) %>% 
+      mutate(sample = factor(sample, levels=c('iPSC_IIi_9','iPSC_IIJ_10','iPSC_IIK_11','iPSC_IIL_12','GFP_IIE_5','GFP_IIF_6','GFP_IIG_7','GFP_IIH_8'))) %>% 
+      ggplot(aes(x=Count, y=sample)) + 
+      geom_density_ridges() +
+      geom_point(data = sample_motifs %>% 
+                   filter(motif_alt_id == !!motif) %>% 
+                   group_by(sample, motif_alt_id) %>%
+                   summarise(Count=n()) %>% ungroup(), aes(x=Count,y=sample), colour='blue', size=2, alpha=0.5) +
+      scale_y_discrete(expand = c(0.01, 0)) +
+      theme_ridges() + 
+      ggtitle(paste0(motif, ' (', 
+                     tf_motif %>% filter(motif_alt_id == !!motif) %>% pull(TF),
+                     ')'))
+  }
+}
+```
+# Plot enrichment  specific motif/TFBS
+
+## TET1
+```{r}
+plotterGi('M0610_1.02')
+```
+
+## DNMT1
+```{r}
+plotterGi('M0609_1.02')
+```
+
+## PAX6
+```{r}
+plotterGi('M6410_1.02')
+```
+
+## SOX10
+```{r}
+plotterGi('M6470_1.02')
+```
+
+## MITF
+```{r}
+plotterGi('M6345_1.02')
+```
+
+## HES1
+```{r}
+plotterGi('M6271_1.02')
+```
+
+## SIX3
+```{r}
+plotterGi('M1016_1.02')
+```
+
+## SIX2
+```{r}
+plotterGi('M0952_1.02')
+```
+
+# Distribution of TFBS/motif enrichment
+## Fold Change
+```{r}
+delta_motif_FC <- sample_bootstrap_counts %>% mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
+                                                    grepl('RFP', sample) ~ 'RFP',
+                                                    TRUE ~ 'iPSC'),
+                                   Boot = case_when(bootstrap == 'real' ~ 'real',
+                                                    TRUE ~ 'boot')) %>% 
+  group_by(Type, motif_alt_id, Boot) %>% 
+  mutate(`Z score` = scale(Count)) %>% 
+  summarise(Mean=mean(Count)) %>% 
+  spread(Boot, Mean) %>%
+  ungroup() %>% 
+  mutate(FC = real / boot, Type = factor(Type, levels=c('iPSC','RFP','GFP'))) %>% 
+  arrange(-FC) %>% 
+  left_join(tf_motif) %>% 
+  select(-boot, -real) 
+
+delta_motif_FC %>% ggplot(aes(y=Type, x=log2(FC))) + geom_density_ridges() + theme_ridges() 
+
+delta_motif_FC %>% ggplot(aes(y=Type, x=FC)) + geom_density_ridges() + theme_ridges() 
+```
+
+
+
+```{r}
+# calculate z scores for sample_bootstrap_counts
+Z_scoring <- sample_bootstrap_counts %>% 
+  # collapse by Type, motif, and whether bootstrap or real
+  group_by(sample, motif_alt_id) %>% 
+  mutate(`Z score` = scale(Count)) %>% 
+  filter(bootstrap == 'real') %>% 
+  select(-bootstrap, -TF) %>% 
+  left_join(tf_motif)
+
+#Z_scoring %>% head()
+```
+# Distribution of *relative* TFBS/motif enrichment *between* GFP <-> RFP
+```{r}
+FC_motif_FC <- sample_bootstrap_counts %>% mutate(Type = case_when(grepl('GFP', sample) ~ 'GFP',
+                                                    grepl('RFP', sample) ~ 'RFP',
+                                                    TRUE ~ 'iPSC'),
+                                   Boot = case_when(bootstrap == 'real' ~ 'real',
+                                                    TRUE ~ 'boot')) %>% 
+  # collapse by Type, motif, and whether bootstrap or real
+  group_by(Type, motif_alt_id, Boot) %>% 
+  summarise(Mean=mean(Count)) %>% 
+  # go wide
+  spread(Boot, Mean) %>%
+  # so you can calculate FC
+  mutate(FC = real / boot) %>% 
+  arrange(-FC) %>% 
+  # add motif name
+  left_join(tf_motif) %>% 
+  select(-boot, -real) %>%
+  # spread again to sample_bootstrap_countsow for GFP vs RFP or iPSC comparisons
+  spread(Type, FC) %>% 
+  filter(GFP > 1.2) %>% 
+  mutate(`FC^2 GFP <-> iPSC` = GFP / iPSC, `FC^2 GFP <-> RFP` = GFP / RFP) %>% 
+  arrange(-`FC^2 GFP <-> RFP`) 
+
+plot1 <- FC_motif_FC %>% 
+  ggplot(aes(x=`FC^2 GFP <-> RFP`)) + 
+  geom_density(fill='gray') + 
+  theme_minimal() + 
+  geom_vline(xintercept = 1.2, color='blue')
+plot1
+```
+
+# Distribution of *relative* TFBS/motif enrichment *between* GFP <-> iPSC
+```{r}
+plot2 <- FC_motif_FC %>% 
+  ggplot(aes(x=`FC^2 GFP <-> iPSC`)) + 
+  geom_density(fill='gray') + 
+  theme_minimal()+ 
+  geom_vline(xintercept = 1.2, color = 'blue')
+plot2 
+```
+
+## Both together
+```{r}
+plot_grid(plot1 + coord_cartesian(xlim=c(0.5,5.5)), plot2 + coord_cartesian(xlim=c(0.5,5.5)), nrow = 2, align = 'hv', axis='tblr')
+```
