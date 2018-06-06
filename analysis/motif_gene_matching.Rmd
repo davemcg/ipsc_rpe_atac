@@ -19,8 +19,24 @@ output:
 4. Identify closest 2 genes (under 500k bp) to each motif
 5. Bootstrap steps 2 and 3 250 times each to get background rate
 
+```{r, message=F, warning=F, results='hide'}
+# Load Libraries without printing any warnings or messages
+library(tidyverse)
+library(ggridges)
+library(cowplot)
+library(DESeq2)
+library(ggrepel)
+
+load('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/Rdata/dds.Rdata')
+load('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/Rdata/sample_bootstrap_counts.Rdata')
+load('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/Rdata/sample_closestTSS.Rdata')
+load('~/git/ipsc_rpe_atac/data/tf_motif.Rdata')
+
+```
+
 # DESeq2-based analysis
 I realized that motifs by samples is similar to genes by samples
+
 
 GFP vs iPSC
 ```{r}
@@ -29,8 +45,8 @@ dds$Type <- relevel(dds$Type, ref='RFP')
 res_GFP_iPSC <- results(dds, contrast=c("Type","GFP","iPSC")) 
 res_GFP_RFP <- results(dds, contrast=c("Type","GFP","RFP")) 
 
-plotMA(res_GFP_iPSC)
-plot(hist(res_GFP_iPSC$pvalue, breaks=1000))
+#plotMA(res_GFP_iPSC)
+#plot(hist(res_GFP_iPSC$pvalue, breaks=1000))
 
 ```
 
@@ -44,6 +60,18 @@ rpe_ipsc <- read_csv('~/git/ipsc_rpe_RNA-seq/data/RPE_vs_iPSC.results.csv')
 ## Table of results
 
 ### Motifs high in GFP
+```{r}
+# calculate z scores for sample_bootstrap_counts
+Z_scoring <- sample_bootstrap_counts %>% 
+  # collapse by Type, motif, and whether bootstrap or real
+  group_by(sample, motif_alt_id) %>% 
+  mutate(`Z score` = scale(Count)) %>% 
+  filter(bootstrap == 'real') %>% 
+  select(-bootstrap, -TF) %>% 
+  left_join(tf_motif)
+
+#Z_scoring %>% head()
+```
 
 The `Z score` is the number of standard deviation of motifs found in the sample peaks above the random set of peaks
 ```{r}
@@ -95,6 +123,51 @@ volcano_maker(results, 'GFP+ RPE vs iPSC TFBS motif counts')
 
 ## Plots of the top motifs more common in GFP than iPSC
 
+```{r}
+# motif ggridges plotter
+# removes GFP 
+plotterGi <- function(motif, scale=TRUE) {
+  if (scale == TRUE){
+    sample_bootstrap_counts <- sample_bootstrap_counts %>% filter(motif_alt_id == !!motif) %>% 
+      filter(!grepl('RFP',sample)) %>% 
+      group_by(sample, motif_alt_id) %>% 
+      mutate(`Z score` = scale(Count)) %>% 
+      ungroup() 
+    sample_bootstrap_counts %>% 
+      filter(!grepl('RFP',sample)) %>% 
+      #mutate(sample = factor(sample, levels=c('iPSC_IIi_9','iPSC_IIJ_10','iPSC_IIK_11','iPSC_IIL_12','RFP_IIE_1','RFP_IIF_2','RFP_IIG_3','RFP_IIH_4','GFP_IIE_5','GFP_IIF_6','GFP_IIG_7','GFP_IIH_8'))) %>% 
+      mutate(sample = factor(sample, levels=c('iPSC_IIi_9','iPSC_IIJ_10','iPSC_IIK_11','iPSC_IIL_12','GFP_IIE_5','GFP_IIF_6','GFP_IIG_7','GFP_IIH_8'))) %>% 
+      ggplot(aes(x=`Z score`, y=sample)) + 
+      geom_density_ridges() +
+      geom_point(data = sample_bootstrap_counts %>% 
+                   filter(bootstrap == 'real', motif_alt_id == !!motif) %>% 
+                   ungroup(), aes(x=`Z score`,y=sample), colour='blue', size=2, alpha=0.5) +
+      scale_y_discrete(expand = c(0.01, 0)) +
+      theme_ridges() + 
+      ggtitle(paste0(motif, ' (', 
+                     tf_motif %>% filter(motif_alt_id == !!motif) %>% pull(TF),
+                     ')'))
+  }
+  else {
+    sample_bootstrap_counts %>% filter(motif_alt_id == !!motif) %>% 
+      filter(!grepl('RFP',sample)) %>% 
+      #mutate(sample = factor(sample, levels=c('iPSC_IIi_9','iPSC_IIJ_10','iPSC_IIK_11','iPSC_IIL_12','RFP_IIE_1','RFP_IIF_2','RFP_IIG_3','RFP_IIH_4','GFP_IIE_5','GFP_IIF_6','GFP_IIG_7','GFP_IIH_8'))) %>% 
+      mutate(sample = factor(sample, levels=c('iPSC_IIi_9','iPSC_IIJ_10','iPSC_IIK_11','iPSC_IIL_12','GFP_IIE_5','GFP_IIF_6','GFP_IIG_7','GFP_IIH_8'))) %>% 
+      ggplot(aes(x=Count, y=sample)) + 
+      geom_density_ridges() +
+      geom_point(data = sample_motifs %>% 
+                   filter(motif_alt_id == !!motif) %>% 
+                   group_by(sample, motif_alt_id) %>%
+                   summarise(Count=n()) %>% ungroup(), aes(x=Count,y=sample), colour='blue', size=2, alpha=0.5) +
+      scale_y_discrete(expand = c(0.01, 0)) +
+      theme_ridges() + 
+      ggtitle(paste0(motif, ' (', 
+                     tf_motif %>% filter(motif_alt_id == !!motif) %>% pull(TF),
+                     ')'))
+  }
+}
+```
+
 ```{r, fig.height=5, fig.width=6}
 plots <- list()
 for (i in results %>% filter((`GFP Z score`) > 5) %>% arrange(pvalue) %>% head(n=12) %>% pull(motif_alt_id)){
@@ -117,15 +190,6 @@ for (i in results %>% filter((`iPSC Z score`) > 5) %>% arrange(pvalue) %>% head(
 plot_grid(plotlist = plots, ncol=3)
 ```
 
-
-```{r}
-# Gene <-> motif matching
-# load gtf to map transcript to gene_name
-
-gtf <- read_tsv("ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_28/GRCh37_mapping/gencode.v28lift37.metadata.HGNC.gz", col_names = c('Transcript','Gene'))
-# gtf <- gtf %>% rowwise() %>% mutate(transcript = ((str_split(V9, ';')[[1]] %>% str_extract('transcript_id.*') %>% na.omit())[1] %>% str_split(., '\"'))[[1]][2],
-#                              gene = ((str_split(V9, ';')[[1]] %>% str_extract('gene_name.*') %>% na.omit())[1] %>% str_split(., '\"'))[[1]][2])
-```
 
 
 ## Closest TSS for OTX2 (M5700_1.02)
