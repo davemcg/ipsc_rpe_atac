@@ -32,6 +32,8 @@
 	},
 	"process_closest_TSS_data" :
 	{
-		"mem" : "32G"
+		"partition" : "norm",
+		"time" : "12:00:00",
+		"mem" : "64G"
 	}
 }
