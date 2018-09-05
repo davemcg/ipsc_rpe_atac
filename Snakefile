@@ -40,6 +40,8 @@ rule all:
 		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}_peaks.blackListed.hg19.narrowPeak.bb', sample = list(SAMPLE_PATH.keys())),
 		'deeptools/multiBamSummary.npz',
 		'deeptools/multiBamSummary.tsv',
+		'metrics/reads_by_sample.txt',
+		'fastqc/multiqc/multiqc_report.html'
 		'macs_peak/common_peaks.blackListed.narrowPeak',
 		expand('msCentipede/closest_TSS/{sample}.{motif}.closestTSS.dat.gz', sample = list(SAMPLE_PATH.keys()), motif = config['motif_IDs']),
 		expand('msCentipede_TFBS/{motif}.union.HQ.bed', motif = config['motif_IDs'])
@@ -399,7 +401,7 @@ rule reformat_motifs:
 rule msCentipede_learn:
 	input:
 		motifs = 'fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.dat.gz',
-		atac_bams = 'downsample_bam/{sample}.q5.rmdup.ds.bam'
+		atac_bams = 'merged_bam_HQ/{sample}.q5.rmdup.bam'
 	output:
 		model = 'msCentipede/{sample}/{motif}.model'
 	shell:
@@ -416,7 +418,7 @@ rule msCentipede_learn:
 rule msCentipede_infer:
 	input:
 		motifs = 'fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.dat.gz',
-		atac_bams = 'downsample_bam/{sample}.q5.rmdup.ds.bam',
+		atac_bams = 'merged_bam_HQ/{sample}.q5.rmdup.bam',
 		model = 'msCentipede/{sample}/{motif}.model'
 	output:
 		posterior = 'msCentipede/{sample}/{motif}.posterior'
