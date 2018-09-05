@@ -15,9 +15,9 @@ sbcmd="sbatch --cpus-per-task={threads} \
 
 
 snakemake -s /home/mcgaugheyd/git/ipsc_rpe_atac/Snakefile \
--pr --local-cores $SLURM_CPUS_PER_TASK --jobs 1999 \
+-pr --local-cores 4 --jobs 1999 \
 --configfile $1 \
 --cluster-config /home/mcgaugheyd/git/ipsc_rpe_atac/cluster.json \
 --cluster "$sbcmd"  --latency-wait 120 --rerun-incomplete \
--k \
+-k --restart-times 1 \
 --resources parallel=4
