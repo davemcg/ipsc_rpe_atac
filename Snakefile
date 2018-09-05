@@ -41,7 +41,7 @@ rule all:
 		'deeptools/multiBamSummary.npz',
 		'deeptools/multiBamSummary.tsv',
 		'metrics/reads_by_sample.txt',
-		'fastqc/multiqc/multiqc_report.html'
+		'fastqc/multiqc/multiqc_report.html',
 		'macs_peak/common_peaks.blackListed.narrowPeak',
 		expand('msCentipede/closest_TSS/{sample}.{motif}.closestTSS.dat.gz', sample = list(SAMPLE_PATH.keys()), motif = config['motif_IDs']),
 		expand('msCentipede_TFBS/{motif}.union.HQ.bed', motif = config['motif_IDs'])
