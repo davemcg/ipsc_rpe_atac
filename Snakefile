@@ -5,12 +5,12 @@ from itertools import chain
 # run once outside of snakemake 
 # bash ~/git/NGS_db/build_metadata.sh Huf > ~/git/ipsc_rpe_atac/metadata.csv
 
-# read metadata into dictionary for snakemake to link samples to lane bams 
-# one sample can have 1 to n lane bams
+# read metadata into dictionary for snakemake to link samples to lane fastqs 
+# one sample can have 1 to n lane fastq
 SAMPLE_PATH = dict()
 metadata = open(config['metadata_file'])
 for line in metadata:
-	path = line.split(',')[3][:-1]
+	path = line.split(',')[4][:-1]
 	sample = line.split(',')[1]
 	# skip header
 	if sample == 'Sample':
@@ -22,62 +22,52 @@ for line in metadata:
 		old_path.append(path)
 		SAMPLE_PATH[sample] = old_path
 
-localrules: pull_lane_bams_from_nisc, retrieve_and_process_black_list, black_list, \
+localrules: pull_lane_fastq_from_nisc, retrieve_and_process_black_list, black_list, \
 	ucsc_view, total_reads, union_peaks, merge_peaks, bootstrap_peaks, \
-	peak_fasta_bootstrap, peak_fasta, remove_tss_promoters, build_tss_regions, \
-	build_cisbp_master_file
+	peak_fasta, remove_tss_promoters, build_tss_regions, \
+	build_cisbp_master_file, download_HOCOMOCO_meme, common_peaks, reformat_motifs, \
+	merge_HOCOMOCO_cisbp
 	#find_closest_TSS, find_closest_TSS_bootstrap
 
 wildcard_constraints:
-	sample='|'.join(list(SAMPLE_PATH.keys())),
-	lane_bam='|'.join([x.split('/')[-1].split('.bam')[0] for x in list(itertools.chain.from_iterable(SAMPLE_PATH.values()))])
+	sample = '|'.join(list(SAMPLE_PATH.keys())),
+	motif = '|'.join(list(config['motif_IDs'])),
+	lane_fastq = '|'.join([x.split('/')[-1].split('.bam')[0] for x in list(itertools.chain.from_iterable(SAMPLE_PATH.values()))])
 
 rule all:
 	input:
-		expand('macs_peak/{sample}_peaks.blackListed.hg19.narrowPeak', sample = list(SAMPLE_PATH.keys())),
-		'fastqc/multiqc/multiqc_report.html',
-		'deeptools/multiBamSummary.tsv',
-		'metrics/reads_by_sample.txt',
 		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}.bw', sample = list(SAMPLE_PATH.keys())),
 		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}_peaks.blackListed.hg19.narrowPeak.bb', sample = list(SAMPLE_PATH.keys())),
-		expand('closest_TSS_motifs/{sample}.fimo.closestTSS.dat.gz', sample = list(SAMPLE_PATH.keys())),
-		expand('closest_TSS_motifs/bootstrapping/{sample}.bootstrap_{bootstrap_num}.fimo.closestTSS.dat.gz', \
-			sample = list(SAMPLE_PATH.keys()), \
-			bootstrap_num = [str(x).zfill(3) for x in list(range(1,config['motif_bootstrap_num']))]),
-		expand('fimo_motifs/bootstrapping_stats/{sample}.bootstrap_{bootstrap_num}.fimo_counts.dat.gz', \
-			sample = list(SAMPLE_PATH.keys()), \
-			bootstrap_num = [str(x).zfill(3) for x in list(range(1,config['motif_bootstrap_num']))]),
-		expand('closest_TSS_motifs/processed/{sample}.fimo.closestTSS.processed.dat.gz',
-			sample = list(SAMPLE_PATH.keys()))
+		'deeptools/multiBamSummary.npz',
+		'deeptools/multiBamSummary.tsv',
+		'macs_peak/common_peaks.blackListed.narrowPeak',
+		expand('msCentipede/closest_TSS/{sample}.{motif}.closestTSS.dat.gz', sample = list(SAMPLE_PATH.keys()), motif = config['motif_IDs']),
+		expand('msCentipede_TFBS/{motif}.union.HQ.bed', motif = config['motif_IDs'])
 
-rule pull_lane_bams_from_nisc:
+rule pull_lane_fastq_from_nisc:
 	output:
-		'original/{lane_file}.bam'
+		'fastq/{lane_files}'
 	run:
 		lane_files = [x for x in list(itertools.chain.from_iterable(SAMPLE_PATH.values()))]
-		for bam in lane_files:
-			command = 'rsync -av trek.nhgri.nih.gov:' + bam + ' original/'
+		for fastq in lane_files:
+			command = 'rsync -av trek.nhgri.nih.gov:' + fastq + ' fastq/'
 			echo_command = 'echo ' + command
 			shell('echo ' + str(output))
 			shell(echo_command)
 			shell(command)
 		
 
-# bam to fastq to bwa to make bam, again
-rule realign:
+# fastq to bwa for alignment
+rule align:
 	input:
-		'original/{lane_file}.bam'
+		expand('fastq/{{lane_sample}}{pair}.fastq.gz', pair = ['_R1_001', '_R2_001']) 
 	output:
-		temp('realigned/{lane_file}.bam')
-	threads: 8
+		temp('realigned/{lane_sample}.bam')
+	threads: 12 
 	shell:
 		"""
-		module load {config[samtools_version]}
 		module load {config[bwa_version]}
-		tmp_name=$( echo {input} | sed 's/\///g' )
-		samtools collate -uOn 128 {input} /tmp/TMP_$tmp_name | \
-			samtools fastq - | \
-			bwa mem -t {threads} -B 4 -O 6 -E 1 -M -p {config[bwa_genome]} - | \
+		bwa mem -t {threads} -B 4 -O 6 -E 1 -M {config[bwa_genome]} {input} | \
 			samtools view -1 - > \
 			{output}
 		"""
@@ -85,7 +75,7 @@ rule realign:
 # if sample has more than one lane bam, then merge into one bam
 rule merge_bam:
 	input:
-		lambda wildcards: expand('realigned/{lane_file}.bam', lane_file = [x.split('/')[-1][:-4] for x in SAMPLE_PATH[wildcards.sample]])
+		lambda wildcards: expand('realigned/{lane_sample}.bam', lane_sample = list(set([re.split(r'_R[1|2]_',x.split('/')[-1])[0] for x in SAMPLE_PATH[wildcards.sample]])))
 	output:
 		bam = 'merged_bam/{sample}.bam',
 		bai = 'merged_bam/{sample}.bam.bai'
@@ -131,7 +121,7 @@ rule filter_bam:
 		rm {output.bam}TEMP*
 		"""
 
-# downsample to n reads
+# downsample to 50e6 reads
 rule downsample:
 	input:
 		bam = 'merged_bam_HQ/{sample}.q5.rmdup.bam',
@@ -142,7 +132,7 @@ rule downsample:
 	shell:
 		"""
 		module load {config[samtools_version]}
-		frac=$( samtools idxstats {input.bam} | cut -f3 | awk 'BEGIN {{total=0}} {{total += $1}} END {{frac=15000000/total;if (frac > 1) {{print 1}} else {{print frac}}}}' )
+		frac=$( samtools idxstats {input.bam} | cut -f3 | awk 'BEGIN {{total=0}} {{total += $1}} END {{frac=25000000/total;if (frac > 1) {{print 1}} else {{print frac}}}}' )
 		samtools view -s $frac -b {input.bam} > {output.bam}
 		samtools index {output.bam}
 		"""
@@ -169,10 +159,8 @@ rule bam_to_bigWig:
 			--effectiveGenomeSize 2864785220 \
 			--ignoreForNormalization MT \
 			--outFileFormat bedgraph
-
-		 /home/mcgaugheyd/git/ChromosomeMappings/convert_notation.py \
-			-c /home/mcgaugheyd/git/ChromosomeMappings/GRCh37_ensembl2UCSC.txt \
-			-f <( grep ^[0-9XY] {output.bedgraph} ) | sort -k1,1 -k2,2n > {output.bedgraph}TEMP
+		
+		sort -k1,1 -k2,2n {output.bedgraph} > {output.bedgraph}TEMP 
 		bedGraphToBigWig {output.bedgraph}TEMP /data/mcgaugheyd/genomes/hg19/hg19.chrom.sizes {output.bw}
 		rm {output.bedgraph}TEMP
 		"""
@@ -218,12 +206,13 @@ rule total_reads:
 		rm metrics/TEMP1; rm metrics/TEMP2
 		"""
 
+# Peak calling
 # macs2
 # ATAC-seq doesn't have control (no input sample). So run in single mode
 # https://groups.google.com/forum/#!topic/macs-announcement/4OCE59gkpKY
 rule peak_calling:
 	input:
-		'downsample_bam/{sample}.q5.rmdup.ds.bam'
+		'merged_bam_HQ/{sample}.q5.rmdup.bam'
 	output:
 		peaks = 'macs_peak/{sample}_peaks.xls',
 		narrow_peaks = 'macs_peak/{sample}_peaks.narrowPeak',
@@ -231,32 +220,27 @@ rule peak_calling:
 	shell:
 		"""
 		module load {config[macs2_version]}
-		macs2 callpeak -f BAM -g "hs" -t {input} -q 0.01 \
-			--keep-dup all --nomodel --extsize 200 --shift -100 \
+		macs2 callpeak -f BAMPE -g "hs" -t {input} -q 0.01 \
+			--keep-dup all \
 			-n {wildcards.sample} \
 			--outdir macs_peak
 		"""
-
 # blacklist
 # remove peaks called in ENCODE black list regions
 # https://sites.google.com/site/anshulkundaje/projects/blacklists
 rule retrieve_and_process_black_list:
 	output:
-		'/data/mcgaugheyd/genomes/GRCh37/ENCFF001TDO.bed.gz'
+		'/data/mcgaugheyd/genomes/hg19/ENCFF001TDO.bed.gz'
 	shell:
 		"""
 		wget https://www.encodeproject.org/files/ENCFF001TDO/@@download/ENCFF001TDO.bed.gz
 		mv ENCFF001TDO.bed.gz /data/mcgaugheyd/genomes/hg19/
-		/home/mcgaugheyd/git/ChromosomeMappings/convert_notation.py \
-			-c /home/mcgaugheyd/git/ChromosomeMappings/GRCh37_UCSC2ensembl.txt \
-			-f /data/mcgaugheyd/genomes/hg19/ENCFF001TDO.bed.gz | gzip > \
-			{output}
 		"""
 
 rule black_list:
 	input:
 		peaks = 'macs_peak/{sample}_peaks.narrowPeak',
-		blacklist = '/data/mcgaugheyd/genomes/GRCh37/ENCFF001TDO.bed.gz'
+		blacklist = '/data/mcgaugheyd/genomes/hg19/ENCFF001TDO.bed.gz'
 	output:
 		'macs_peak/{sample}_peaks.blackListed.narrowPeak'
 	shell:
@@ -264,7 +248,6 @@ rule black_list:
 		module load {config[bedtools_version]}
 		intersectBed -a {input.peaks} -b {input.blacklist} -v > {output}
 		"""
-
 # create 1000bp exclusion regions at the TSS
 # these are promoters (which are also open)
 # we want enhancers
@@ -276,10 +259,9 @@ rule build_tss_regions:
 		config['gtf_file']	
 	output:
 		gene = temp('annotation/gene.bed'),
-		tss = temp('annotation/tss_hg19.bed'),
+		tss = temp('annotation/tss_hg19fix1.bed'),
 		tssT2 = temp('annotation/tss_hg19fix2.bed'),
-		tssT3 = temp('annotation/tss_hg19fix3.bed'),
-		tssG = 'annotation/tss_GRCh37.bed'
+		tssG = 'annotation/tss_hg19.bed'
 	shell:
 		"""
 		module load ucsc
@@ -293,22 +275,44 @@ rule build_tss_regions:
 			awk -v OFS='\t' '{{if($6 == "-") {{$3 = $2 + 1000}} else {{$2 = $3 - 1000}} print}}' > \
 			{output.tss}
 		awk '{{if($2 < 1) {{$2 = 1}} print}}' {output.tss} > {output.tssT2}
-		awk '{{if($3 < 1) {{$3 = 1}} print}}' {output.tssT2} > {output.tssT3}
-		/home/mcgaugheyd/git/ChromosomeMappings/convert_notation.py -f {output.tssT3} -c /home/mcgaugheyd/git/ChromosomeMappings/GRCh37_gencode2ensembl.txt > \
-			{output.tssG}
+		awk '{{if($3 < 1) {{$3 = 1}} print}}' {output.tssT2} > {output.tssG}
 		"""
 
 # subtract the peaks in the tss regions
 rule remove_tss_promoters:
 	input:
 		peaks = 'macs_peak/{sample}_peaks.blackListed.narrowPeak',
-		tss = 'annotation/tss_GRCh37.bed'
+		tss = 'annotation/tss_hg19.bed'
 	output:
 		'macs_peak/{sample}_peaks.blackListed.tss_subtract.narrowPeak'
 	shell:
 		"""
 		#module load {config[bedtools_version]}
 		bedtools subtract -a {input.peaks} -b {input.tss} > {output} 
+		"""
+
+# HINT (RGT)
+# http://www.regulatory-genomics.org/hint/introduction/
+rule perform_HINT_footprinting:
+	input:
+		bamfile = 'merged_bam_HQ/{sample}.q5.rmdup.bam',
+		index = 'merged_bam_HQ/{sample}.q5.rmdup.bam.bai',
+		peaks = 'macs_peak/{sample}_peaks.blackListed.tss_subtract.narrowPeak'
+	output:
+		'footprints/{sample}/footprints.bed'
+	shell:
+		"""
+		module load {config[rgt_version]}
+		mkdir -p {output}
+		# remove contig chromosomes
+		awk '$1 !~ /_/ {{print $0}}' {input.peaks} > {input.peaks}TEMP
+		rgt-hint footprinting --output-location {output} \
+			--atac-seq \
+			--paired-end \
+			--organism hg19 \
+			{input.bamfile} \
+			{input.peaks}TEMP
+		rm {input.peaks}TEMP
 		"""
 
 # create n bootstraps for each peak file set
@@ -328,110 +332,149 @@ rule bootstrap_peaks:
 # turn the peak data (minus tss) into fasta to ID motifs with fimo
 rule peak_fasta:
 	input:
-		'macs_peak/{sample}_peaks.blackListed.tss_subtract.narrowPeak'
+		# just need one, all have same DNA!
+		'macs_peak/master_peaks.blackListed.common.narrowPeak'
 	output:
-		'macs_peak/fasta/{sample}_peaks.blackListed.tss_subtract.narrowPeak.fasta'
+		'macs_peak/fasta/common_peaks.blackListed.tss_subtract.narrowPeak.fasta'
 	shell:
 		"""
-		#module load {config[bedtools_version]}
-		bedtools getfasta -fi {config[bwa_genome]} -bed {input} -fo {output}
+		module load {config[bedtools_version]}
+		awk '$1 !~ /_/ {{print $0}}' {input} > {input}TEMP
+		bedtools getfasta -fi {config[genome]} -bed {input}TEMP -fo {output}
+		rm {input}TEMP
 		"""
 
-# identify TF which have differential expression
-# with RNA-seq data
-# will only use TF motifs which have a abs(log2FC) > 1 between iPSC and RPE (GFP / RFP)
-# diff expression data derived from 01_simple_analysis.Rmd from ipsc_ rpe_RNA-seq repo
-rule build_cisbp_master_file:
-	input:
-		config['diff_expression_csv']
+rule download_HOCOMOCO_meme:
 	output:
-		motifs = temp('tf.motifs'),
-		diff_gene = temp('diff.gene'),
-		join = temp('result.join'),
-		meme = 'master_motifs.meme'
-	params:
-		diff_exp = config['diff_expression_value']
-	run:
-		shell("awk '{{print $7, $4}}' {config[cisbp_metadata_file]} /data/mcgaugheyd/motifs/TF_Information.txt | sort | uniq | grep -v '\.$'  > {output.motifs}")
-		shell("awk -F, '{{if($3 > {params.diff_exp}  || $3 < -{params.diff_exp}) {{print $1}}}}'  {input}  > diff.gene")
-		shell("join <( sort -k1,1 diff.gene ) <( sort -k1,1 tf.motifs) > {output.join}")
-		join = open(output.join)
-		meme_base_path = config['meme_cisbp_path'] #'/data/mcgaugheyd/motifs/meme_motifs'
-		header = 'MEME version 4\n\nALPHABET= ACGT\n\nstrands: + -\n\nBackground letter frequencies (from uniform background):\nA 0.25000 C 0.25000 G 0.25000 T 0.25000\n\n'
-		output = open(output.meme, 'w')
-		output.write(header)
-		for line in join:
-			line = line.split()
-			gene = line[0]
-			motif = line[1]
-			try:
-				meme_file = open(meme_base_path + '/' + motif + '.meme')
-				contents = meme_file.readlines()
-				index = [ind for ind, line in enumerate(contents) if 'letter-prob' in line][0]
-				if index != '':
-					output.write('MOTIF ' + gene + ' ' + motif + '\n\n')
-					output.write(''.join(contents[index:]))
-			except:
-				print(motif + ' not present')
-		output.close()
-			
-		
-		
+		'meme_pwm/HOCOMOCOv11_core_HUMAN_mono_meme_format.meme'
+	shell:
+		"""
+		wget http://hocomoco11.autosome.ru/final_bundle/hocomoco11/core/HUMAN/mono/HOCOMOCOv11_core_HUMAN_mono_meme_format.meme -P meme_pwm
+		"""
 
-# fimo calls motifs over a ~1e-5 threshold (based on background A-G-C-T rates)
+rule merge_HOCOMOCO_cisbp:
+	input:
+		'meme_pwm/HOCOMOCOv11_core_HUMAN_mono_meme_format.meme'
+	output:
+		'meme_pwm/HOCOMOCOv11_core_HUMAN_mono_meme_format__cisBP.meme'
+	shell:
+		"""
+		tail -n +10 /fdb/meme/motif_databases/CIS-BP/Homo_sapiens.meme > cisbp
+		cat {input} cisbp > {output}
+		rm cisbp
+		"""
+
+# fimo calls motifs over a ~1e-5 threshold (based on background A-G-C-T rates)	
 rule call_motifs:
 	input:
-		fasta = 'macs_peak/fasta/{sample}_peaks.blackListed.tss_subtract.narrowPeak.fasta',
-		meme_file = 'master_motifs.meme'
+		fasta = config['genome'],
+		meme_file = 'meme_pwm/HOCOMOCOv11_core_HUMAN_mono_meme_format__cisBP.meme'
 	output:
-		'fimo_motifs/{sample}.fimo.dat.gz'
+		'fimo_motifs/{motif}/meme.fimo.dat.gz'
 	shell:
 		"""
 		module load {config[meme_version]}
-		fimo --no-qvalue --max-stored-scores 1000000 --text --parse-genomic-coord {input.meme_file} {input.fasta} | gzip -f > {output}
-		"""
+		fimo --no-qvalue  --text --parse-genomic-coord --motif {wildcards.motif} {input.meme_file} {input.fasta} | gzip -f > {output}
+		"""	
 
-# turn the peak data (minus tss) into fasta to ID motifs with fimo
-# runs on the bootstraps
-rule peak_fasta_bootstrap:
+rule reformat_motifs:
 	input:
-		'macs_peak/bootstrapping/{sample}_peaks.bootstrap_{bootstrap_num}.blackListed.tss_subtract.narrowPeak'
+		'fimo_motifs/{motif}/meme.fimo.dat.gz'
 	output:
-		'macs_peak/bootstrapping/{sample}_peaks.bootstrap_{bootstrap_num}.blackListed.tss_subtract.narrowPeak.fasta'
+		header = temp('fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.HEADER'),
+		body = temp('fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.BODY'),
+		intermediate = temp('fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.INTERMEDIATE'),
+		ready = temp('fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.dat.gz')
 	shell:
 		"""
-		#module load {config[bedtools_version]}
-		bedtools getfasta -fi {config[bwa_genome]} -bed {input} -fo {output}
+		module load samtools || true
+		# only keep top 10,000 scoring motifs for msCentipede
+		printf "Chr\tStart\tStop\tStrand\tPwmScore\n" > {output.header}
+		zcat {input} | tail -n +2 | sort -k6,6nr | cut -f3,4,5,6,7 | head -n 10005 | sort -k1,1 -k2,2n > {output.body} || true
+		cat {output.header} {output.body} > {output.intermediate} || true
+		bgzip -fc {output.intermediate} > {output.ready} || true
 		"""
 
-# fimo calls motifs over a ~1e-5 threshold (based on background A-G-C-T rates)
-# runs on the bootstraps
-rule call_motifs_bootstrap:
+# select parameters to optimize msCentipede ID of TFBS
+rule msCentipede_learn:
 	input:
-		fasta = 'macs_peak/bootstrapping/{sample}_peaks.bootstrap_{bootstrap_num}.blackListed.tss_subtract.narrowPeak.fasta',
-		meme_file = 'master_motifs.meme'
+		motifs = 'fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.dat.gz',
+		atac_bams = 'downsample_bam/{sample}.q5.rmdup.ds.bam'
 	output:
-		'fimo_motifs/bootstrapping/{sample}.bootstrap_{bootstrap_num}.fimo.dat.gz'
+		model = 'msCentipede/{sample}/{motif}.model'
 	shell:
 		"""
-		module load {config[meme_version]}
-		fimo --no-qvalue --max-stored-scores 1000000 --text --parse-genomic-coord {input.meme_file} {input.fasta} | gzip -f > {output}
+		module load {config[msCentipede_version]}
+		call_binding.py --task learn {input.motifs} {input.atac_bams} \
+			--protocol ATAC_seq \
+			--model_file {output.model} \
+			--mintol 1e-2 \
+			--log_file msCentipede/{wildcards.sample}/{wildcards.motif}.learn.logfile 
 		"""
 
-# get stats per bootstrap file
-rule bootstrap_stats:
+# ID TFBS
+rule msCentipede_infer:
 	input:
-		'fimo_motifs/bootstrapping/{sample}.bootstrap_{bootstrap_num}.fimo.dat.gz'
+		motifs = 'fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.dat.gz',
+		atac_bams = 'downsample_bam/{sample}.q5.rmdup.ds.bam',
+		model = 'msCentipede/{sample}/{motif}.model'
 	output:
-		'fimo_motifs/bootstrapping_stats/{sample}.bootstrap_{bootstrap_num}.fimo_counts.dat.gz'
+		posterior = 'msCentipede/{sample}/{motif}.posterior'
 	shell:
 		"""
-		module load {config[R_version]}
-		Rscript ~/git/ipsc_rpe_atac/src/fimo_counter.R {input} {output}
+		module load {config[msCentipede_version]}
+		call_binding.py --task infer {input.motifs} {input.atac_bams} \
+			--protocol ATAC_seq \
+			--model_file {input.model} \
+			--posterior_file {output.posterior} \
+			--log_file msCentipede/{wildcards.sample}/{wildcards.motif}.infer.logfile 
 		"""
 
+# retain highest quality hits, and return as bed
+# https://github.com/rajanil/msCentipede/issues/11
+# One suggested set of conditions to select the most likely bound sites is
+# LogPosOdds > 2 AND MultLikeRatio > 1 AND NegBinLikeRatio > 1 .
+# LogPosOdds is the log of the posterior odds that the TF is bound. (LogPosOdds > 2 is equivalent to the binding posterior > 0.99)
+# MultLikeRatio is the log likelihood ratio for the cleavage profile model.
+# NegBinLikeRatio is the log likelihood ratio for the total chromatin accessibility model.
+# (all logs are base 10)
+rule msCentipede_motif_HQ:
+	input:
+		tfbs = 'msCentipede/{sample}/{motif}.posterior'
+	output:
+		'msCentipede/{sample}/{motif}.posterior.HQ.bed'
+	shell:
+		"""
+		zcat {input.tfbs} | \
+			awk -v s="{wildcards.sample}" -v m="{wildcards.motif}" '$5>2 && $7>1 && $8>1 {{print $0, "\t"s"_"m}}'| \
+			cut -f1,2,3,4,5,9 | \
+			tail -n +2 > {output} 
+		"""
 
-# find closest TSS/transcript to each motif
+rule msCentipede_motif_HQ_overlap_peaks:
+	input:
+		tfbs = 'msCentipede/{sample}/{motif}.posterior.HQ.bed',
+		peak = 'macs_peak/{sample}_peaks.blackListed.tss_subtract.narrowPeak'
+	output:
+		'msCentipede/{sample}/{motif}.posterior.HQ_peak.bed'
+	shell:
+		"""
+		module load {config[bedtools_version]}
+		bedtools intersect -a {input.tfbs} -b {input.peak} > {output}
+		"""
+
+# merge TFBS found by motifs
+rule msCentipede_cat_by_motif:
+	input:
+		expand('msCentipede/{sample}/{{motif}}.posterior.HQ.bed', sample = list(SAMPLE_PATH.keys())) 
+	output:
+		'msCentipede/motif_cat/{motif}.posterior.HQ.bed'
+	shell:
+		"""
+		cat {input} | sort -k1,1 -k2,2n > {output}
+		"""
+
+# find closest TSS/transcript to each TFBS
 # finds 10 closest (-k 10)
 # why so high? because I'm thinking that a bunch of similar transcripts 
 # will artificially inflate the hits
@@ -439,67 +482,30 @@ rule bootstrap_stats:
 # I'll collapse the tx into genes later in R
 rule find_closest_TSS:
 	input:
-		'fimo_motifs/{sample}.fimo.dat.gz'
+		'msCentipede/{sample}/{motif}.posterior.HQ.bed'	
 	output:
-		'closest_TSS_motifs/{sample}.fimo.closestTSS.dat.gz'
+		'msCentipede/closest_TSS/{sample}.{motif}.closestTSS.dat.gz'
 	shell:
 		"""
 		module load {config[bedtools_version]}
-		zcat {input} | \
-			grep -v '^#' | \
-			awk -v OFS='\t' '{{print $3, $4, $5, $2, $8, $6}}' | \
+		cat {input} | \
 			sort -k1,1 -k2,2n | \
 					closestBed -g <( sort -k1,1 -k2,2n {config[bwa_genome_sizes]} ) \
-						-k 10 -d -a - -b <( sort -k1,1 -k2,2n annotation/tss_GRCh37.bed ) | \
+						-k 10 -d -a - -b <( sort -k1,1 -k2,2n annotation/tss_hg19.bed ) | \
 			gzip -f > {output}
 		"""
 
-# bootstrap version
-rule find_closest_TSS_bootstrap:
+# create superset of all TFBS grouped by TFBS
+rule union_TFBS:
 	input:
-		'fimo_motifs/bootstrapping/{sample}.bootstrap_{bootstrap_num}.fimo.dat.gz'
+		expand('msCentipede/{sample}/{{motif}}.posterior.HQ.bed', sample = list(SAMPLE_PATH.keys()))
 	output:
-		'closest_TSS_motifs/bootstrapping/{sample}.bootstrap_{bootstrap_num}.fimo.closestTSS.dat.gz'
+		'msCentipede_TFBS/{motif}.union.HQ.bed'
 	shell:
 		"""
-		module load {config[bedtools_version]}
-		zcat {input} | \
-			grep -v '^#' | \
-			awk -v OFS='\t' '{{print $3, $4, $5, $2, $8, $6}}' | \
-			sort -k1,1 -k2,2n | \
-			closestBed -g <( sort -k1,1 -k2,2n {config[bwa_genome_sizes]} ) \
-				-k 10 -d -a - -b <( sort -k1,1 -k2,2n annotation/tss_GRCh37.bed ) | \
-			gzip -f > {output}
+		cat {input} | sort -k1,1 -k2,2n > {output}
 		"""
 
-# parses find_closet_TSS with R
-# pretty slow to do on local comp
-# so let's make the cluster do it
-rule process_closest_TSS_data:
-	input:
-		'closest_TSS_motifs/{sample}.fimo.closestTSS.dat.gz'
-	output:
-		'closest_TSS_motifs/processed/{sample}.fimo.closestTSS.processed.dat.gz'
-	shell:
-		"""
-		module load {config[R_version]}
-		Rscript ~/git/ipsc_rpe_atac/src/tss_motif_parser.R {input} {config[gtf_metadata]} {output} 
-		"""
-
-rule convert_peaks_to_hg19:
-	input:
-		'macs_peak/{sample}_peaks.blackListed.narrowPeak'
-	output:
-		'macs_peak/{sample}_peaks.blackListed.hg19.narrowPeak'
-	shell:
-		"""
-		/home/mcgaugheyd/git/ChromosomeMappings/convert_notation.py \
-			-c /home/mcgaugheyd/git/ChromosomeMappings/GRCh37_ensembl2UCSC.txt \
-			-f <( grep -v hs37d5 {input} )  > \
-			{output}
-		"""
-
-# create superset of all peak file
 rule union_peaks:
 	input:
 		expand('macs_peak/{sample}_peaks.blackListed.narrowPeak', sample = list(SAMPLE_PATH.keys()))
@@ -522,10 +528,24 @@ rule merge_peaks:
 		bedtools merge -i {input} > {output}
 		"""
 
-# compute read coverage across master peaks 
+# only keep peaks which appear in two or individual peak calls
+rule common_peaks:
+	input:
+		union = 'macs_peak/union_peaks.blackListed.narrowPeak',
+		merged = 'macs_peak/master_peaks.blackListed.narrowPeak'
+	output:
+		'macs_peak/common_peaks.blackListed.narrowPeak'
+	shell:
+		"""
+		module load {config[bedtools_version]}
+		bedtools intersect -a {input.merged} -b {input.union} -c | awk '$4>1 {{print $0}}' > {output}
+		"""
+
+
+# compute read coverage across common  peaks 
 rule multiBamSummary:
 	input:
-		peaks = 'macs_peak/master_peaks.blackListed.narrowPeak',
+		peaks = 'macs_peak/common_peaks.blackListed.narrowPeak',
 		bam = expand('merged_bam/{sample}.bam', sample = list(SAMPLE_PATH.keys())),
 		bai = expand('merged_bam/{sample}.bam.bai', sample = list(SAMPLE_PATH.keys()))
 	output:
@@ -550,7 +570,7 @@ rule multiBamSummary:
 rule ucsc_view:
 	input:
 		bigWig = 'bigWig/{sample}.bw', 
-		bed = 'macs_peak/{sample}_peaks.blackListed.hg19.narrowPeak'
+		bed = 'macs_peak/{sample}_peaks.blackListed.narrowPeak'
 	params:
 		base_path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/'
 	output:
