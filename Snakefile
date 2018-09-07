@@ -7,11 +7,14 @@ from itertools import chain
 
 # read metadata into dictionary for snakemake to link samples to lane fastqs 
 # one sample can have 1 to n lane fastq
+# also making a TYPE <-> SAMPLE dict (where type is RFP / GFP / iPSC)
 SAMPLE_PATH = dict()
+TYPE_SAMPLE = dict()
 metadata = open(config['metadata_file'])
 for line in metadata:
 	path = line.split(',')[4][:-1]
 	sample = line.split(',')[1]
+	cell_type = sample.split('_')[0].upper()
 	# skip header
 	if sample == 'Sample':
 		continue
@@ -21,12 +24,20 @@ for line in metadata:
 		old_path = SAMPLE_PATH[sample]
 		old_path.append(path)
 		SAMPLE_PATH[sample] = old_path
+	if cell_type not in TYPE_SAMPLE:
+		TYPE_SAMPLE[cell_type] = [sample] 
+	else:
+		old_sample = TYPE_SAMPLE[cell_type]
+		old_sample = list(set(old_sample))
+		old_sample.append(sample)
+		TYPE_SAMPLE[cell_type] = old_sample
+
 
 localrules: pull_lane_fastq_from_nisc, retrieve_and_process_black_list, black_list, \
 	ucsc_view, total_reads, union_peaks, merge_peaks, bootstrap_peaks, \
 	peak_fasta, remove_tss_promoters, build_tss_regions, \
 	build_cisbp_master_file, download_HOCOMOCO_meme, common_peaks, reformat_motifs, \
-	merge_HOCOMOCO_cisbp
+	merge_HOCOMOCO_cisbp, union_TFBS_pretty_ucsc, prettify_union_TFBS
 	#find_closest_TSS, find_closest_TSS_bootstrap
 
 wildcard_constraints:
@@ -43,8 +54,8 @@ rule all:
 		'metrics/reads_by_sample.txt',
 		'fastqc/multiqc/multiqc_report.html',
 		'macs_peak/common_peaks.blackListed.narrowPeak',
-		expand('msCentipede/closest_TSS/{sample}.{motif}.closestTSS.dat.gz', sample = list(SAMPLE_PATH.keys()), motif = config['motif_IDs']),
-		expand('msCentipede_TFBS/{motif}.union.HQ.bed', motif = config['motif_IDs'])
+		expand('msCentipede/closest_TSS/{cell_type}.{motif}.closestTSS.dat.gz', cell_type = list(TYPE_SAMPLE.keys()), motif = config['motif_IDs']),
+		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{motif}.union.HQ.pretty.bb', motif = config['motif_IDs'])
 
 rule pull_lane_fastq_from_nisc:
 	output:
@@ -250,6 +261,7 @@ rule black_list:
 		module load {config[bedtools_version]}
 		intersectBed -a {input.peaks} -b {input.blacklist} -v > {output}
 		"""
+
 # create 1000bp exclusion regions at the TSS
 # these are promoters (which are also open)
 # we want enhancers
@@ -293,59 +305,6 @@ rule remove_tss_promoters:
 		bedtools subtract -a {input.peaks} -b {input.tss} > {output} 
 		"""
 
-# HINT (RGT)
-# http://www.regulatory-genomics.org/hint/introduction/
-rule perform_HINT_footprinting:
-	input:
-		bamfile = 'merged_bam_HQ/{sample}.q5.rmdup.bam',
-		index = 'merged_bam_HQ/{sample}.q5.rmdup.bam.bai',
-		peaks = 'macs_peak/{sample}_peaks.blackListed.tss_subtract.narrowPeak'
-	output:
-		'footprints/{sample}/footprints.bed'
-	shell:
-		"""
-		module load {config[rgt_version]}
-		mkdir -p {output}
-		# remove contig chromosomes
-		awk '$1 !~ /_/ {{print $0}}' {input.peaks} > {input.peaks}TEMP
-		rgt-hint footprinting --output-location {output} \
-			--atac-seq \
-			--paired-end \
-			--organism hg19 \
-			{input.bamfile} \
-			{input.peaks}TEMP
-		rm {input.peaks}TEMP
-		"""
-
-# create n bootstraps for each peak file set
-# as background distribution for the motifs found
-# with fimo
-rule bootstrap_peaks:
-	input:
-		'macs_peak/{sample}_peaks.blackListed.tss_subtract.narrowPeak'
-	output:
-		'macs_peak/bootstrapping/{sample}_peaks.bootstrap_{bootstrap_num}.blackListed.tss_subtract.narrowPeak'
-	shell:
-		"""
-		#module load {config[bedtools_version]}
-		bedtools shuffle -excl annotation/tss_GRCh37.bed -g {config[bwa_genome_sizes]} -i {input} > {output}
-		"""
-
-# turn the peak data (minus tss) into fasta to ID motifs with fimo
-rule peak_fasta:
-	input:
-		# just need one, all have same DNA!
-		'macs_peak/master_peaks.blackListed.common.narrowPeak'
-	output:
-		'macs_peak/fasta/common_peaks.blackListed.tss_subtract.narrowPeak.fasta'
-	shell:
-		"""
-		module load {config[bedtools_version]}
-		awk '$1 !~ /_/ {{print $0}}' {input} > {input}TEMP
-		bedtools getfasta -fi {config[genome]} -bed {input}TEMP -fo {output}
-		rm {input}TEMP
-		"""
-
 rule download_HOCOMOCO_meme:
 	output:
 		'meme_pwm/HOCOMOCOv11_core_HUMAN_mono_meme_format.meme'
@@ -359,12 +318,20 @@ rule merge_HOCOMOCO_cisbp:
 		'meme_pwm/HOCOMOCOv11_core_HUMAN_mono_meme_format.meme'
 	output:
 		'meme_pwm/HOCOMOCOv11_core_HUMAN_mono_meme_format__cisBP.meme'
-	shell:
-		"""
-		tail -n +10 /fdb/meme/motif_databases/CIS-BP/Homo_sapiens.meme > cisbp
-		cat {input} cisbp > {output}
-		rm cisbp
-		"""
+	run:
+		shell("tail -n +10 /fdb/meme/motif_databases/CIS-BP/Homo_sapiens.meme > cisbp")
+		file = open('cisbp')
+		out_cis = open('out_cis', 'w')
+		for line in file:
+			if 'MOTIF' in line[0:10]:
+				line = line.split()
+				out_cis.write(line[0] + '\t' + line[1] + '__' + line[2] + '\n')
+			else:
+				out_cis.write(line)
+		file.close()
+		out_cis.close()
+		shell("cat {input} out_cis > {output}")
+		shell("rm cisbp; rm out_cis")
 
 # fimo calls motifs over a ~1e-5 threshold (based on background A-G-C-T rates)	
 rule call_motifs:
@@ -398,12 +365,13 @@ rule reformat_motifs:
 		"""
 
 # select parameters to optimize msCentipede ID of TFBS
+# use replicates for each cell type
 rule msCentipede_learn:
 	input:
 		motifs = 'fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.dat.gz',
-		atac_bams = 'merged_bam_HQ/{sample}.q5.rmdup.bam'
+		atac_bams = lambda wildcards: expand('merged_bam_HQ/{sample}.q5.rmdup.bam', sample = TYPE_SAMPLE[wildcards.cell_type]),
 	output:
-		model = 'msCentipede/{sample}/{motif}.model'
+		model = 'msCentipede/{cell_type}/{motif}.model'
 	shell:
 		"""
 		module load {config[msCentipede_version]}
@@ -411,17 +379,17 @@ rule msCentipede_learn:
 			--protocol ATAC_seq \
 			--model_file {output.model} \
 			--mintol 1e-2 \
-			--log_file msCentipede/{wildcards.sample}/{wildcards.motif}.learn.logfile 
+			--log_file msCentipede/{wildcards.cell_type}/{wildcards.motif}.learn.logfile 
 		"""
 
 # ID TFBS
 rule msCentipede_infer:
 	input:
 		motifs = 'fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.dat.gz',
-		atac_bams = 'merged_bam_HQ/{sample}.q5.rmdup.bam',
-		model = 'msCentipede/{sample}/{motif}.model'
+		atac_bams = lambda wildcards: expand('merged_bam_HQ/{sample}.q5.rmdup.bam', sample = TYPE_SAMPLE[wildcards.cell_type]),
+		model = 'msCentipede/{cell_type}/{motif}.model'
 	output:
-		posterior = 'msCentipede/{sample}/{motif}.posterior'
+		posterior = 'msCentipede/{cell_type}/{motif}.posterior'
 	shell:
 		"""
 		module load {config[msCentipede_version]}
@@ -429,7 +397,7 @@ rule msCentipede_infer:
 			--protocol ATAC_seq \
 			--model_file {input.model} \
 			--posterior_file {output.posterior} \
-			--log_file msCentipede/{wildcards.sample}/{wildcards.motif}.infer.logfile 
+			--log_file msCentipede/{wildcards.cell_type}/{wildcards.motif}.infer.logfile 
 		"""
 
 # retain highest quality hits, and return as bed
@@ -442,35 +410,23 @@ rule msCentipede_infer:
 # (all logs are base 10)
 rule msCentipede_motif_HQ:
 	input:
-		tfbs = 'msCentipede/{sample}/{motif}.posterior'
+		tfbs = 'msCentipede/{cell_type}/{motif}.posterior'
 	output:
-		'msCentipede/{sample}/{motif}.posterior.HQ.bed'
+		'msCentipede/{cell_type}/{motif}.posterior.HQ.tsv'
 	shell:
 		"""
 		zcat {input.tfbs} | \
-			awk -v s="{wildcards.sample}" -v m="{wildcards.motif}" '$5>2 && $7>1 && $8>1 {{print $0, "\t"s"_"m}}'| \
+			awk -v s="{wildcards.cell_type}" -v m="{wildcards.motif}" '$5>2 && $7>1 && $8>1 {{print $0, "\t"s"_"m}}'| \
 			cut -f1,2,3,4,5,9 | \
 			tail -n +2 > {output} 
-		"""
-
-rule msCentipede_motif_HQ_overlap_peaks:
-	input:
-		tfbs = 'msCentipede/{sample}/{motif}.posterior.HQ.bed',
-		peak = 'macs_peak/{sample}_peaks.blackListed.tss_subtract.narrowPeak'
-	output:
-		'msCentipede/{sample}/{motif}.posterior.HQ_peak.bed'
-	shell:
-		"""
-		module load {config[bedtools_version]}
-		bedtools intersect -a {input.tfbs} -b {input.peak} > {output}
 		"""
 
 # merge TFBS found by motifs
 rule msCentipede_cat_by_motif:
 	input:
-		expand('msCentipede/{sample}/{{motif}}.posterior.HQ.bed', sample = list(SAMPLE_PATH.keys())) 
+		expand('msCentipede/{cell_type}/{{motif}}.posterior.HQ.tsv', cell_type = list(TYPE_SAMPLE.keys())) 
 	output:
-		'msCentipede/motif_cat/{motif}.posterior.HQ.bed'
+		'msCentipede/motif_cat/{motif}.posterior.HQ.tsv'
 	shell:
 		"""
 		cat {input} | sort -k1,1 -k2,2n > {output}
@@ -484,9 +440,9 @@ rule msCentipede_cat_by_motif:
 # I'll collapse the tx into genes later in R
 rule find_closest_TSS:
 	input:
-		'msCentipede/{sample}/{motif}.posterior.HQ.bed'	
+		'msCentipede/{cell_type}/{motif}.posterior.HQ.tsv'	
 	output:
-		'msCentipede/closest_TSS/{sample}.{motif}.closestTSS.dat.gz'
+		'msCentipede/closest_TSS/{cell_type}.{motif}.closestTSS.dat.gz'
 	shell:
 		"""
 		module load {config[bedtools_version]}
@@ -500,14 +456,64 @@ rule find_closest_TSS:
 # create superset of all TFBS grouped by TFBS
 rule union_TFBS:
 	input:
-		expand('msCentipede/{sample}/{{motif}}.posterior.HQ.bed', sample = list(SAMPLE_PATH.keys()))
+		expand('msCentipede/{cell_type}/{{motif}}.posterior.HQ.tsv', cell_type  = list(TYPE_SAMPLE.keys()))
 	output:
-		'msCentipede_TFBS/{motif}.union.HQ.bed'
+		'msCentipede_TFBS/{motif}.union.HQ.tsv'
 	shell:
 		"""
 		cat {input} | sort -k1,1 -k2,2n > {output}
 		"""
 
+# reformat union_TFBS to turn into proper bed and prep for UCSC viewing
+rule prettify_union_TFBS:
+	input:
+		'msCentipede_TFBS/{motif}.union.HQ.tsv'
+	output:
+		'msCentipede_TFBS/{motif}.union.HQ.pretty.bed'
+	run:
+		tsv = open(input[0])
+		out = open(output[0], 'w')
+		out.write("track name=\"" + wildcards.motif + "\" description=\"" + wildcards.motif + " msCentipede TFBS\" visibility=2 itemRgb=\"On\"\n")
+		for line in tsv:
+			line = line.split()
+			new_line = line[0] + '\t' + line[1] + '\t' + line[2] + '\t' + line[5] + '\t' + line[4] + '\t' + line[3] + '\t' + line[1] + '\t' + line[2]  
+			if 'iPSC' in line[5]:
+				out.write(new_line + '\t0,0,255\n')
+			elif 'GFP' in line[5]:
+				out.write(new_line + '\t0,255,0\n')
+			else:
+				out.write(new_line + '\t255,0,0\n')
+		tsv.close()
+		out.close()
+
+# make bigBed for ucsc
+# turn score into int and cap at 1000
+rule union_TFBS_pretty_ucsc:
+	input:
+		'msCentipede_TFBS/{motif}.union.HQ.pretty.bed'
+	output:
+		nohead = temp('msCentipede_TFBS/{motif}.union.HQ.pretty.bedNOHEAD'),
+		scorefix = temp('msCentipede_TFBS/{motif}.union.HQ.pretty.bedSCOREFIX'),
+		bb = '/data/mcgaugheyd/datashare/hufnagel/hg19/{motif}.union.HQ.pretty.bb'
+	params:
+		base_path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/'
+	run:
+		shell("tail -n +2 {input} > {output.nohead}")
+		data = open(output.nohead)
+		out = open(output.scorefix, 'w')
+		for line in data:
+			line = line.split()
+			score = int(float(line[4]))
+			if score >= 1000:
+				score = 999
+			line[4] = str(score)
+			out.write('\t'.join(line) + '\n')
+		data.close()
+		out.close()
+		shell("cp {output.scorefix} .")			
+		shell("module load ucsc; \
+			bedToBigBed {output.scorefix} /data/mcgaugheyd/genomes/hg19/hg19.chrom.sizes {output.bb}")
+		
 rule union_peaks:
 	input:
 		expand('macs_peak/{sample}_peaks.blackListed.narrowPeak', sample = list(SAMPLE_PATH.keys()))
