@@ -543,7 +543,8 @@ rule merge_peaks_by_type:
 		bedtools merge -i {input} > {output}
 		"""
 
-# only keep peaks which appear in two or individual peak calls
+# only keep peaks which appear in two or individual peak calls and are 40% or more overlapping
+# also add bed 9+ rgb coloring by cell type
 rule common_peaks_by_type:
 	input:
 		union = 'macs_peak/{cell_type}_peaks.blackListed.narrowPeak',
@@ -552,7 +553,7 @@ rule common_peaks_by_type:
 		'macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak'
 	run:
 		shell("module load {config[bedtools_version]}; \
-			bedtools intersect -a {input.merged} -b {input.union} -c | awk '$4>1 {{print $0}}' > {output}T")
+			bedtools intersect -a {input.merged} -b {input.union} -c -e 0.4 | awk '$4>1 {{print $0}}' > {output}T")
 		tsv = open(output[0] + 'T')
 		out = open(output[0], 'w')
 		if wildcards.cell_type == 'RFP':
