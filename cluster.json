@@ -29,7 +29,7 @@
 	{
 		"partition" : "norm",
 		"mem" : "16G",
-		"time" : "4:00:00"
+		"time" : "24:00:00"
 	},
 	"call_motifs" :
 	{
