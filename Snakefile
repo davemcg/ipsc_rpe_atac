@@ -37,12 +37,14 @@ localrules: pull_lane_fastq_from_nisc, retrieve_and_process_black_list, black_li
 	ucsc_view, total_reads, union_peaks, merge_peaks, bootstrap_peaks, \
 	peak_fasta, remove_tss_promoters, build_tss_regions, \
 	build_cisbp_master_file, download_HOCOMOCO_meme, common_peaks, reformat_motifs, \
-	merge_HOCOMOCO_cisbp, union_TFBS_pretty_ucsc, prettify_union_TFBS
+	merge_HOCOMOCO_cisbp, union_TFBS_pretty_ucsc, prettify_union_TFBS, \
+	ucsc_view_master, common_peaks_across_all
 	#find_closest_TSS, find_closest_TSS_bootstrap
 
 wildcard_constraints:
 	sample = '|'.join(list(SAMPLE_PATH.keys())),
 	motif = '|'.join(list(config['motif_IDs'])),
+	cell_type = '|'.join(list(TYPE_SAMPLE.keys())),
 	lane_fastq = '|'.join([x.split('/')[-1].split('.bam')[0] for x in list(itertools.chain.from_iterable(SAMPLE_PATH.values()))])
 
 rule all:
@@ -53,9 +55,10 @@ rule all:
 		'deeptools/multiBamSummary.tsv',
 		'metrics/reads_by_sample.txt',
 		'fastqc/multiqc/multiqc_report.html',
-		'macs_peak/common_peaks.blackListed.narrowPeak',
+		#'macs_peak/all_common_peaks.blackListed.narrowPeak',
 		expand('msCentipede/closest_TSS/{cell_type}.{motif}.closestTSS.dat.gz', cell_type = list(TYPE_SAMPLE.keys()), motif = config['motif_IDs']),
-		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{motif}.union.HQ.pretty.bb', motif = config['motif_IDs'])
+		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{motif}.union.HQ.pretty.bb', motif = config['motif_IDs']),
+		'/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_peaks.blackListed.narrowPeak.bb'
 
 rule pull_lane_fastq_from_nisc:
 	output:
@@ -313,12 +316,13 @@ rule download_HOCOMOCO_meme:
 		wget http://hocomoco11.autosome.ru/final_bundle/hocomoco11/core/HUMAN/mono/HOCOMOCOv11_core_HUMAN_mono_meme_format.meme -P meme_pwm
 		"""
 
-rule merge_HOCOMOCO_cisbp:
+rule merge_HOCOMOCO_cisbp_jolma:
 	input:
 		'meme_pwm/HOCOMOCOv11_core_HUMAN_mono_meme_format.meme'
 	output:
-		'meme_pwm/HOCOMOCOv11_core_HUMAN_mono_meme_format__cisBP.meme'
+		'meme_pwm/HOCOMOCOv11_core_HUMAN_mono_meme_format__cisBP__jolma.meme'
 	run:
+		shell("tail -n +10 /fdb/meme/motif_databases/EUKARYOTE/jolma2013.meme > jolma")
 		shell("tail -n +10 /fdb/meme/motif_databases/CIS-BP/Homo_sapiens.meme > cisbp")
 		file = open('cisbp')
 		out_cis = open('out_cis', 'w')
@@ -330,38 +334,38 @@ rule merge_HOCOMOCO_cisbp:
 				out_cis.write(line)
 		file.close()
 		out_cis.close()
-		shell("cat {input} out_cis > {output}")
-		shell("rm cisbp; rm out_cis")
+		shell("cat {input} out_cis jolma > {output}")
+		shell("rm cisbp; rm out_cis; rm jolma")
 
 # fimo calls motifs over a ~1e-5 threshold (based on background A-G-C-T rates)	
 rule call_motifs:
 	input:
 		fasta = config['genome'],
-		meme_file = 'meme_pwm/HOCOMOCOv11_core_HUMAN_mono_meme_format__cisBP.meme'
+		meme_file = 'meme_pwm/HOCOMOCOv11_core_HUMAN_mono_meme_format__cisBP__jolma.meme'
 	output:
 		'fimo_motifs/{motif}/meme.fimo.dat.gz'
 	shell:
 		"""
 		module load {config[meme_version]}
-		fimo --no-qvalue  --text --parse-genomic-coord --motif {wildcards.motif} {input.meme_file} {input.fasta} | gzip -f > {output}
+		fimo --thresh 0.001 --no-qvalue  --text --parse-genomic-coord --motif {wildcards.motif} {input.meme_file} {input.fasta} | gzip -f > {output}
 		"""	
 
 rule reformat_motifs:
 	input:
 		'fimo_motifs/{motif}/meme.fimo.dat.gz'
 	output:
-		header = temp('fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.HEADER'),
-		body = temp('fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.BODY'),
-		intermediate = temp('fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.INTERMEDIATE'),
-		ready = temp('fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.dat.gz')
+		header = ('fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.HEADER'),
+		body = ('fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.BODY'),
+		intermediate = ('fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.INTERMEDIATE'),
+		ready = 'fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.dat.gz'
 	shell:
 		"""
-		module load samtools || true
+		module load samtools; # || true
 		# only keep top 10,000 scoring motifs for msCentipede
 		printf "Chr\tStart\tStop\tStrand\tPwmScore\n" > {output.header}
-		zcat {input} | tail -n +2 | sort -k6,6nr | cut -f3,4,5,6,7 | head -n 10005 | sort -k1,1 -k2,2n > {output.body} || true
-		cat {output.header} {output.body} > {output.intermediate} || true
-		bgzip -fc {output.intermediate} > {output.ready} || true
+		zcat {input} | tail -n +2 | sort -k6,6nr | cut -f3,4,5,6,7 | head -n 10005 | sort -k1,1 -k2,2n > {output.body}; # || true
+		cat {output.header} {output.body} > {output.intermediate; #} || true
+		bgzip -fc {output.intermediate} > {output.ready}; # || true
 		"""
 
 # select parameters to optimize msCentipede ID of TFBS
@@ -401,6 +405,7 @@ rule msCentipede_infer:
 		"""
 
 # retain highest quality hits, and return as bed
+# also only keep one that overlap macs peaks
 # https://github.com/rajanil/msCentipede/issues/11
 # One suggested set of conditions to select the most likely bound sites is
 # LogPosOdds > 2 AND MultLikeRatio > 1 AND NegBinLikeRatio > 1 .
@@ -410,15 +415,18 @@ rule msCentipede_infer:
 # (all logs are base 10)
 rule msCentipede_motif_HQ:
 	input:
+		peaks = 'macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak',
 		tfbs = 'msCentipede/{cell_type}/{motif}.posterior'
 	output:
 		'msCentipede/{cell_type}/{motif}.posterior.HQ.tsv'
 	shell:
 		"""
+		module load bedtools
 		zcat {input.tfbs} | \
 			awk -v s="{wildcards.cell_type}" -v m="{wildcards.motif}" '$5>2 && $7>1 && $8>1 {{print $0, "\t"s"_"m}}'| \
 			cut -f1,2,3,4,5,9 | \
-			tail -n +2 > {output} 
+			tail -n +2 | \
+			bedtools intersect -a - -b {input.peaks} > {output} 
 		"""
 
 # merge TFBS found by motifs
@@ -477,7 +485,7 @@ rule prettify_union_TFBS:
 		for line in tsv:
 			line = line.split()
 			new_line = line[0] + '\t' + line[1] + '\t' + line[2] + '\t' + line[5] + '\t' + line[4] + '\t' + line[3] + '\t' + line[1] + '\t' + line[2]  
-			if 'iPSC' in line[5]:
+			if 'IPSC' in line[5]:
 				out.write(new_line + '\t0,0,255\n')
 			elif 'GFP' in line[5]:
 				out.write(new_line + '\t0,255,0\n')
@@ -510,26 +518,25 @@ rule union_TFBS_pretty_ucsc:
 			out.write('\t'.join(line) + '\n')
 		data.close()
 		out.close()
-		shell("cp {output.scorefix} .")			
 		shell("module load ucsc; \
 			bedToBigBed {output.scorefix} /data/mcgaugheyd/genomes/hg19/hg19.chrom.sizes {output.bb}")
 		
-rule union_peaks:
+rule union_peaks_by_type:
 	input:
-		expand('macs_peak/{sample}_peaks.blackListed.narrowPeak', sample = list(SAMPLE_PATH.keys()))
+		lambda wildcards: expand('macs_peak/{sample}_peaks.blackListed.narrowPeak', sample = TYPE_SAMPLE[wildcards.cell_type])
 	output:
-		'macs_peak/union_peaks.blackListed.narrowPeak'
+		'macs_peak/{cell_type}_peaks.blackListed.narrowPeak'
 	shell:
 		"""
 		cat {input} | sort -k1,1 -k2,2n > {output}
 		"""
 
 # merge overlapping peaks together
-rule merge_peaks:
+rule merge_peaks_by_type:
 	input:
-		'macs_peak/union_peaks.blackListed.narrowPeak'
+		'macs_peak/{cell_type}_peaks.blackListed.narrowPeak'
 	output:
-		'macs_peak/master_peaks.blackListed.narrowPeak'
+		'macs_peak/{cell_type}_peaks.blackListed.narrowPeak.merged'
 	shell:
 		"""
 		module load {config[bedtools_version]}
@@ -537,23 +544,67 @@ rule merge_peaks:
 		"""
 
 # only keep peaks which appear in two or individual peak calls
-rule common_peaks:
+rule common_peaks_by_type:
 	input:
-		union = 'macs_peak/union_peaks.blackListed.narrowPeak',
-		merged = 'macs_peak/master_peaks.blackListed.narrowPeak'
+		union = 'macs_peak/{cell_type}_peaks.blackListed.narrowPeak',
+		merged = 'macs_peak/{cell_type}_peaks.blackListed.narrowPeak.merged'
 	output:
-		'macs_peak/common_peaks.blackListed.narrowPeak'
+		'macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak'
+	run:
+		shell("module load {config[bedtools_version]}; \
+			bedtools intersect -a {input.merged} -b {input.union} -c | awk '$4>1 {{print $0}}' > {output}T")
+		tsv = open(output[0] + 'T')
+		out = open(output[0], 'w')
+		if wildcards.cell_type == 'RFP':
+			color = '255,0,0'
+		elif wildcards.cell_type == 'GFP':
+			color = '0,255,0'
+		else:
+			color = '0,0,255'
+		for line in tsv:
+			line = line.split()
+			new_line = '\t'.join(line) + '\t1\t.\t' + line[1] + '\t' + line[2] + '\t' + color + '\n'	
+			out.write(new_line)
+		tsv.close()
+		out.close()
+
+# reformat union_TFBS to turn into proper bed and prep for UCSC viewing
+rule prettify_peaks:
+	input:
+		'macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak'
+	output:
+		'macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak.bed'
+	run:
+		tsv = open(input[0])
+		out = open(output[0], 'w')
+		out.write("track name=\"" + wildcards.motif + "\" description=\"" + wildcards.motif + " msCentipede TFBS\" visibility=2 itemRgb=\"On\"\n")
+		for line in tsv:
+			line = line.split()
+			new_line = line[0] + '\t' + line[1] + '\t' + line[2] + '\t' + line[5] + '\t' + line[4] + '\t' + line[3] + '\t' + line[1] + '\t' + line[2]  
+			if 'IPSC' in line[5]:
+				out.write(new_line + '\t0,0,255\n')
+			elif 'GFP' in line[5]:
+				out.write(new_line + '\t0,255,0\n')
+			else:
+				out.write(new_line + '\t255,0,0\n')
+		tsv.close()
+		out.close()
+
+# merge peaks
+rule common_peaks_across_all:
+	input:
+		expand('macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak', cell_type  = list(TYPE_SAMPLE.keys()))
+	output:
+		'macs_peak/all_common_peaks.blackListed.narrowPeak'
 	shell:
 		"""
-		module load {config[bedtools_version]}
-		bedtools intersect -a {input.merged} -b {input.union} -c | awk '$4>1 {{print $0}}' > {output}
+		cat {input} | sort -k1,1 -k2,2n > {output}
 		"""
-
 
 # compute read coverage across common  peaks 
 rule multiBamSummary:
 	input:
-		peaks = 'macs_peak/common_peaks.blackListed.narrowPeak',
+		peaks = 'macs_peak/all_common_peaks.blackListed.narrowPeak',
 		bam = expand('merged_bam/{sample}.bam', sample = list(SAMPLE_PATH.keys())),
 		bai = expand('merged_bam/{sample}.bam.bai', sample = list(SAMPLE_PATH.keys()))
 	output:
@@ -578,12 +629,12 @@ rule multiBamSummary:
 rule ucsc_view:
 	input:
 		bigWig = 'bigWig/{sample}.bw', 
-		bed = 'macs_peak/{sample}_peaks.blackListed.narrowPeak'
+		bed = 'macs_peak/{sample}_peaks.blackListed.narrowPeak',
 	params:
 		base_path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/'
 	output:
 		bigWig = '/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}.bw',
-		bigBed = '/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}_peaks.blackListed.hg19.narrowPeak.bb'
+		bigBed = '/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}_peaks.blackListed.hg19.narrowPeak.bb',
 	shell:
 		"""
 		module load ucsc
@@ -593,5 +644,18 @@ rule ucsc_view:
 		ln -s {params.base_path}{input.bigWig} {output.bigWig}
 		rm {input.bed}TEMP
 		"""
-	
+
+rule ucsc_view_master:
+	input:
+		master = 'macs_peak/all_common_peaks.blackListed.narrowPeak'
+	params:
+		 base_path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/'
+	output:
+		bigBedMasterPeaks = '/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_peaks.blackListed.narrowPeak.bb'
+	shell:
+		"""
+		module load ucsc
+		bedToBigBed {input.master} /data/mcgaugheyd/genomes/hg19/hg19.chrom.sizes {input.master}.bb
+		ln -s {params.base_path}{input.master}.bb {output.bigBedMasterPeaks}
+		"""	
 	
