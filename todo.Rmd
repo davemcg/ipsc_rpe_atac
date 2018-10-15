@@ -6,3 +6,7 @@
 6. Find closest 1-4 genes (or within 1mb) for each peak, split by TFBS type
 7. Classify each gene by promoter open/close and expression (off/med/high?)
 8. GO Term / pathway enrichment of gene sets
+
+1. Global Homer(?) or fimo for enriched TFBS or HOCOMOCO
+
+1. Pattern each gene (GFP peaks, differential expression, peak promoter) and classify
