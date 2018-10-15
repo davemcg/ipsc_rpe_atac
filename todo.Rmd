@@ -1,0 +1,8 @@
+1. ID regions that are green (and not blue). Ignore red. 
+2. Pull DNA
+3. Run Homer.
+4. ID top TFBS
+5. Remove TFBS that aren't expressed (based on RNA-seq)
+6. Find closest 1-4 genes (or within 1mb) for each peak, split by TFBS type
+7. Classify each gene by promoter open/close and expression (off/med/high?)
+8. GO Term / pathway enrichment of gene sets
