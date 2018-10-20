@@ -58,7 +58,8 @@ rule all:
 		#'macs_peak/all_common_peaks.blackListed.narrowPeak',
 		expand('msCentipede/closest_TSS/{cell_type}.{motif}.closestTSS.dat.gz', cell_type = list(TYPE_SAMPLE.keys()), motif = config['motif_IDs']),
 		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{motif}.union.HQ.pretty.bb', motif = config['motif_IDs']),
-		'/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_peaks.blackListed.narrowPeak.bb'
+		'/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_peaks.blackListed.narrowPeak.bb',
+		'homer/'
 
 rule pull_lane_fastq_from_nisc:
 	output:
@@ -363,9 +364,9 @@ rule reformat_motifs:
 		module load samtools; # || true
 		# only keep top 10,000 scoring motifs for msCentipede
 		printf "Chr\tStart\tStop\tStrand\tPwmScore\n" > {output.header}
-		zcat {input} | tail -n +2 | sort -k6,6nr | cut -f3,4,5,6,7 | head -n 10005 | sort -k1,1 -k2,2n > {output.body}; # || true
-		cat {output.header} {output.body} > {output.intermediate; #} || true
-		bgzip -fc {output.intermediate} > {output.ready}; # || true
+		zcat {input} | tail -n +2 | sort -k6,6nr | cut -f3,4,5,6,7 | head -n 10005 | sort -k1,1 -k2,2n > {output.body} || true
+		cat {output.header} {output.body} > {output.intermediate} || true
+		bgzip -fc {output.intermediate} > {output.ready} || true
 		"""
 
 # select parameters to optimize msCentipede ID of TFBS
@@ -553,7 +554,7 @@ rule common_peaks_by_type:
 		'macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak'
 	run:
 		shell("module load {config[bedtools_version]}; \
-			bedtools intersect -a {input.merged} -b {input.union} -c -e 0.4 | awk '$4>1 {{print $0}}' > {output}T")
+			bedtools intersect -a {input.merged} -b {input.union} -c -f 0.4 | awk '$4>1 {{print $0}}' > {output}T")
 		tsv = open(output[0] + 'T')
 		out = open(output[0], 'w')
 		if wildcards.cell_type == 'RFP':
@@ -600,6 +601,65 @@ rule common_peaks_across_all:
 	shell:
 		"""
 		cat {input} | sort -k1,1 -k2,2n > {output}
+		"""
+
+# filter out unique peaks
+# with user given pair
+# the first in the pair given in config['peak_comparison_pair'] are the peaks kept against the second of the pair
+rule unique_peaks:
+	input:
+		one = 'macs_peak/' + config['peak_comparison_pair'][0] + '_common_peaks.blackListed.narrowPeak',
+		two = 'macs_peak/' + config['peak_comparison_pair'][1] + '_common_peaks.blackListed.narrowPeak'
+	output:
+		'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
+			config['peak_comparison_pair'][1] + '_common_peaks.blackListed.narrowPeak'
+	shell:
+		"""
+		module load {config[bedtools_version]}
+		bedtools intersect -v -f 0.1 -a {input.one} -b {input.two} > {output}
+		"""
+
+# extract fasta
+rule get_fasta_from_unique_peaks:
+	input:
+		'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
+			config['peak_comparison_pair'][1] + '_common_peaks.blackListed.narrowPeak'
+	output:
+		'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
+			config['peak_comparison_pair'][1] + '_common_peaks.blackListed.fasta'
+	shell:
+		"""
+		module load {config[bedtools_version]}
+		bedtools getfasta -fi {config[genome]} -bed {input} > {output}
+		"""
+
+# scramble fasta
+rule homer_scramble_fasta:
+	input:
+		'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
+			config['peak_comparison_pair'][1] + '_common_peaks.blackListed.fasta'
+	output:
+		'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
+			config['peak_comparison_pair'][1] + '_common_peaks.blackListed.scramble.fasta'
+	shell:
+		"""
+		module load {config[homer_version]}
+		scrambleFasta.pl {input} > {output}
+		"""
+# run homer on unique_peaks
+rule homer_find_motifs:
+	input:
+		exp = 'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
+			config['peak_comparison_pair'][1] + '_common_peaks.blackListed.fasta',
+		control = 'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
+			config['peak_comparison_pair'][1] + '_common_peaks.blackListed.scramble.fasta'
+	output:
+		'homer/'
+	shell:
+		"""
+		mkdir -p {output}
+		module load {config[homer_version]}
+		findMotifs.pl {input.exp} human {output} -fasta {input.control}
 		"""
 
 # compute read coverage across common  peaks 
