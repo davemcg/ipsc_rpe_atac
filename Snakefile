@@ -38,7 +38,7 @@ localrules: pull_lane_fastq_from_nisc, retrieve_and_process_black_list, black_li
 	peak_fasta, remove_tss_promoters, build_tss_regions, \
 	build_cisbp_master_file, download_HOCOMOCO_meme, common_peaks, reformat_motifs, \
 	merge_HOCOMOCO_cisbp, union_TFBS_pretty_ucsc, prettify_union_TFBS, \
-	ucsc_view_master, common_peaks_across_all
+	ucsc_view_master, common_peaks_across_all, find_closest_TSS_against_unique_peaks
 	#find_closest_TSS, find_closest_TSS_bootstrap
 
 wildcard_constraints:
@@ -59,6 +59,8 @@ rule all:
 		expand('msCentipede/closest_TSS/{cell_type}.{motif}.closestTSS.dat.gz', cell_type = list(TYPE_SAMPLE.keys()), motif = config['motif_IDs']),
 		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{motif}.union.HQ.pretty.bb', motif = config['motif_IDs']),
 		'/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_peaks.blackListed.narrowPeak.bb',
+		 'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
+			config['peak_comparison_pair'][1] + '_common_peaks.closestTSS.blackListed.narrowPeak',
 		'homer/'
 
 rule pull_lane_fastq_from_nisc:
@@ -619,6 +621,25 @@ rule unique_peaks:
 		bedtools intersect -v -f 0.1 -a {input.one} -b {input.two} > {output}
 		"""
 
+# find closest TSS/transcript to each unique peak, as above for TFBS
+# finds 10 closest (-k 10)
+rule find_closest_TSS_against_unique_peaks:
+	input:
+		'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
+			config['peak_comparison_pair'][1] + '_common_peaks.blackListed.narrowPeak'
+	output:
+		 'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
+			config['peak_comparison_pair'][1] + '_common_peaks.closestTSS.blackListed.narrowPeak'
+	shell:
+		"""
+		module load {config[bedtools_version]}
+		cat {input} | \
+			sort -k1,1 -k2,2n | \
+					closestBed -g <( sort -k1,1 -k2,2n {config[bwa_genome_sizes]} ) \
+						-k 10 -d -a - -b <( sort -k1,1 -k2,2n annotation/tss_hg19.bed ) | \
+			gzip -f > {output}
+		"""
+
 # extract fasta
 rule get_fasta_from_unique_peaks:
 	input:
@@ -646,6 +667,7 @@ rule homer_scramble_fasta:
 		module load {config[homer_version]}
 		scrambleFasta.pl {input} > {output}
 		"""
+
 # run homer on unique_peaks
 rule homer_find_motifs:
 	input:
@@ -659,7 +681,7 @@ rule homer_find_motifs:
 		"""
 		mkdir -p {output}
 		module load {config[homer_version]}
-		findMotifs.pl {input.exp} human {output} -fasta {input.control}
+		findMotifs.pl {input.exp} human {output} -fasta {input.control} -minlp -3 -humanGO
 		"""
 
 # compute read coverage across common  peaks 

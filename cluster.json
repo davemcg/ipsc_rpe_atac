@@ -51,5 +51,10 @@
 	{
 		"partition" : "norm",
 		"time" : "24:00:00"
+	},
+	"homer_find_motifs" :
+	{
+		"partition" : "norm",
+		"time" : "8:00:00"
 	}
 }
