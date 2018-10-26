@@ -38,7 +38,8 @@ localrules: pull_lane_fastq_from_nisc, retrieve_and_process_black_list, black_li
 	peak_fasta, remove_tss_promoters, build_tss_regions, \
 	build_cisbp_master_file, download_HOCOMOCO_meme, common_peaks, reformat_motifs, \
 	merge_HOCOMOCO_cisbp, union_TFBS_pretty_ucsc, prettify_union_TFBS, \
-	ucsc_view_master, common_peaks_across_all, find_closest_TSS_against_unique_peaks
+	ucsc_view_master, common_peaks_across_all, find_closest_TSS_against_unique_peaks, \
+	common_peaks_by_type
 	#find_closest_TSS, find_closest_TSS_bootstrap
 
 wildcard_constraints:
@@ -298,18 +299,6 @@ rule build_tss_regions:
 		awk '{{if($3 < 1) {{$3 = 1}} print}}' {output.tssT2} > {output.tssG}
 		"""
 
-# subtract the peaks in the tss regions
-rule remove_tss_promoters:
-	input:
-		peaks = 'macs_peak/{sample}_peaks.blackListed.narrowPeak',
-		tss = 'annotation/tss_hg19.bed'
-	output:
-		'macs_peak/{sample}_peaks.blackListed.tss_subtract.narrowPeak'
-	shell:
-		"""
-		#module load {config[bedtools_version]}
-		bedtools subtract -a {input.peaks} -b {input.tss} > {output} 
-		"""
 
 rule download_HOCOMOCO_meme:
 	output:
@@ -543,7 +532,7 @@ rule merge_peaks_by_type:
 	shell:
 		"""
 		module load {config[bedtools_version]}
-		bedtools merge -i {input} > {output}
+		bedtools merge -i {input} -c 5,7,10 -o mean > {output}
 		"""
 
 # only keep peaks which appear in two or individual peak calls and are 40% or more overlapping
@@ -567,6 +556,7 @@ rule common_peaks_by_type:
 			color = '0,0,255'
 		for line in tsv:
 			line = line.split()
+			line[3] = str(min(999, round(float(line[3])))) # round for bigBed, no more than 999
 			new_line = '\t'.join(line) + '\t1\t.\t' + line[1] + '\t' + line[2] + '\t' + color + '\n'	
 			out.write(new_line)
 		tsv.close()
@@ -594,15 +584,28 @@ rule prettify_peaks:
 		tsv.close()
 		out.close()
 
+# create tss peaks
+rule peaks_in_tss:
+	input:
+		peaks = 'macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak',
+		tss = 'annotation/tss_hg19.bed'
+	output:
+		'macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak.tss_overlap.bed'
+	shell:
+		"""
+		module load {config[bedtools_version]}
+		bedtools intersect -a {input.peaks} -b {input.tss} -f 0.2 -wa -wb > {output}
+		"""
+
 # merge peaks
 rule common_peaks_across_all:
 	input:
 		expand('macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak', cell_type  = list(TYPE_SAMPLE.keys()))
 	output:
-		'macs_peak/all_common_peaks.blackListed.narrowPeak'
+		'macs_peak/all_common_peaks.blackListed.narrowPeak.bed'
 	shell:
 		"""
-		cat {input} | sort -k1,1 -k2,2n > {output}
+		cat {input} | sort -k1,1 -k2,2n | awk -v OFS='\t' '{{print $1,$2,$3,".",$4,".",$10,$11,$12}}' > {output}
 		"""
 
 # filter out unique peaks
@@ -730,7 +733,7 @@ rule ucsc_view:
 
 rule ucsc_view_master:
 	input:
-		master = 'macs_peak/all_common_peaks.blackListed.narrowPeak'
+		master = 'macs_peak/all_common_peaks.blackListed.narrowPeak.bed'
 	params:
 		 base_path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/'
 	output:
