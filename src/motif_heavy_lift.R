@@ -10,7 +10,7 @@ library(ggrepel)
 ##########################
 # Load in real data
 ###############################
-samples_full = list.files('/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/fimo_motifs/', pattern = '*dat.gz', full.names = T)
+samples_full = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/fimo_motifs/', pattern = '*dat.gz', full.names = T)
 
 #samples_full = list.files('/Volumes/McGaughey_S/fimo_motifs/', pattern = '*dat.gz', full.names = T)
 
@@ -30,7 +30,7 @@ tf_motif <- sample_motifs %>% select('TF' = `# motif_id`, motif_alt_id) %>% uniq
 #########################
 # Load in bootstraps
 #########################
-bootstrap_stats = list.files('/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/fimo_motifs/bootstrapping_stats/', pattern = '*dat.gz', full.names = T)
+bootstrap_stats = list.files('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/fimo_motifs/bootstrapping_stats/', pattern = '*dat.gz', full.names = T)
 #bootstrap_stats = list.files('/Volumes/McGaughey_S/fimo_motifs/bootstrapping_stats/', pattern = '*dat.gz', full.names = T)
 
 # big difference here vs above
@@ -56,7 +56,7 @@ bootstrap_counts = bind_rows(fimo_data) %>% mutate(sample=as.factor(sample)) %>%
 rm(fimo_data)
 
 # merge sample counts with bootstrap counts
-all <- bind_rows(sample_motifs %>% group_by(sample, motif_alt_id) %>% summarise(Count=n()) %>% ungroup() %>% mutate(bootstrap = 'real'),
+all <- bind_rows(sample_motifs %>% group_by(sample, motif_alt_id) %>% summarise(Count=n(), pAvg = mean(`p-value`)) %>% ungroup() %>% mutate(bootstrap = 'real'),
                  bootstrap_counts)
 
 #############################
