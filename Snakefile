@@ -33,6 +33,7 @@ for line in metadata:
 		TYPE_SAMPLE[cell_type] = old_sample
 
 # given homer folder, go into homerResults and knownResults subfolders and extract all motif names
+# and write file names for homer annotation for each motif
 def yank_all_motifs(wildcards):
 	import glob
 	path = 'homer/'
@@ -40,8 +41,7 @@ def yank_all_motifs(wildcards):
 	novel_motifs = glob.glob(path + 'homerResults/*motif')
 	all_motifs = known_motifs + novel_motifs
 	motif_names = [i.split('/')[-1] for i in all_motifs]
-	return ['homer/' + i +'.bed' for i in motif_names]
-	#[i.split('/')[-1] for i in all_motifs]
+	return ['homer/peak_by_motif/' + i +'.bed' for i in motif_names]
 
 localrules: pull_lane_fastq_from_nisc, retrieve_and_process_black_list, black_list, \
 	ucsc_view, total_reads, union_peaks, merge_peaks, bootstrap_peaks, \
@@ -49,7 +49,8 @@ localrules: pull_lane_fastq_from_nisc, retrieve_and_process_black_list, black_li
 	build_cisbp_master_file, download_HOCOMOCO_meme, common_peaks, reformat_motifs, \
 	merge_HOCOMOCO_cisbp, union_TFBS_pretty_ucsc, prettify_union_TFBS, \
 	ucsc_view_master, common_peaks_across_all, find_closest_TSS_against_unique_peaks, \
-	common_peaks_by_type, find_closest_TSS_to_all_common
+	common_peaks_by_type, find_closest_TSS_to_all_common, \
+	extract_TF_score, cat_homer_annotate_peaks
 	#find_closest_TSS, find_closest_TSS_bootstrap
 
 wildcard_constraints:
@@ -73,8 +74,7 @@ rule all:
 		'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
 			config['peak_comparison_pair'][1] + '_common_peaks.closestTSS.blackListed.narrowPeak',
 		'homer/knownResults.html',
-		yank_all_motifs,
-		'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.bed'
+		'peak_full/all_common_peaks.blackListed.narrowPeak.closestTSS__all_homer_motif.bed.gz'
 
 rule pull_lane_fastq_from_nisc:
 	output:
@@ -557,7 +557,7 @@ rule common_peaks_by_type:
 		'macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak'
 	run:
 		shell("module load {config[bedtools_version]}; \
-			bedtools intersect -a {input.merged} -b {input.union} -c -f 0.4 | awk '$4>1 {{print $0}}' > {output}T")
+			bedtools intersect -a {input.merged} -b {input.union} -c -f 0.4 | awk '$7>1 {{print $0}}' > {output}T")
 		tsv = open(output[0] + 'T')
 		out = open(output[0], 'w')
 		if wildcards.cell_type == 'RFP':
@@ -685,7 +685,7 @@ rule get_fasta_from_unique_peaks:
 		"""
 		module load {config[bedtools_version]}
 		bedtools getfasta -fi {config[genome]} -bed {input} > {output}
-		"""
+/		"""
 
 # scramble fasta
 rule homer_scramble_fasta:
@@ -735,6 +735,53 @@ rule homer_annotate_peaks:
 						motif_path + \
 						' > {output.peak_bed}'
 		shell(shell_call)
+
+# concatenate homer_annotate_peaks
+# homer output is a bed {output.motif_bed} with the coordinates of the TFBS
+rule cat_homer_annotate_peaks:
+	input:
+		yank_all_motifs
+	output:
+		'peak_full/homer/all_homer_motif.bed.gz'
+	shell:
+		"""
+		cat {input} | grep -v "track name" | uniq | sort -k1,1 -k2,2n | uniq | bgzip -cf > {output}
+		"""
+
+# intersect homer motif bed 'peak_full/homer/all_homer_motif.bed.gz' with all 'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.bed'
+rule intersect_homer_motifs_with_all_common_peaks:
+	input:
+		a = 'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.bed',
+		b = 'peak_full/homer/all_homer_motif.bed.gz'
+	output:
+		'peak_full/all_common_peaks.blackListed.narrowPeak.closestTSS__all_homer_motif.bed.gz'
+	shell:
+		"""
+		module load {config[bedtools_version]}
+		intersectBed -a {input.motif_bed} -b {input.all_homer_motif} -wa -wb | bgzip -cf > {output.bed_for_r}
+		"""
+
+# merge homer_annotate_peaks with all_common_peaks closestTSS
+rule merge_homer_and_common_peaks:
+	input:
+		all_common_TSS = 'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.bed',
+		all_homer_motif = 'peak_full/homer/all_homer_motif.bed.gz' 
+	output:
+		bed_for_r = temp('peak_full/all_common_peaks.blackListed.narrowPeak.closestTSS.rawIntersect.bed.gz'),
+		bed_out_of_r = 'peak_full/all_common_peaks.blackListed.narrowPeak.closestTSS.AllMotifs.bed.gz' 
+	shell:
+		"""
+		module load {config[bedtools_version]}
+		# intersect input.motif_bed with input.all_homer_motf
+		intersectBed -a {input.motif_bed} -b {input.all_homer_motif} -wa -wb > {output.bed_for_r}
+		module load {config[R_version]}
+		Rscript /home/mcgaugheyd/git/ipsc_rpe_atac/src/merge_peaks_homer_motifs.R \
+			{input.all_common_TSS} \
+			{input.motif_bed} \
+			2 \
+			{output.bed}
+		bgzip -fc {output.bed} > {output.bedgz}
+		"""
 
 # compute read coverage across common  peaks 
 rule multiBamSummary:
