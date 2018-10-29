@@ -11,9 +11,8 @@ library(annotables)
 
 common_peaks_file <- args[1] # common_peaks_file <- '/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.bed'
 motif_bed_file <- args[2] # motif_bed_file <- '/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/homer/motif5.motif.bed'
-gtf_file <- args[3]
-closest_num <- args[4] #3 closest?
-output_file <- args[5] 
+closest_num <- as.numeric(args[3]) #3 closest?
+output_file <- args[4] 
 
 common_peaks_raw <- fread(cmd = paste('gzcat', common_peaks_file))
 # 1. filter to closest n (args[4]) genes within 500,000bp
@@ -44,3 +43,5 @@ motif_bed <- motif_bed %>% as.tibble() %>% select(chrom = V1, start = V2, end = 
 
 # merge!
 output <- left_join(common_peaks, motif_bed)
+# output!
+write_tsv(output, path = output_file)
