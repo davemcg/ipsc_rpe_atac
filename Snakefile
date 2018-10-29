@@ -32,6 +32,16 @@ for line in metadata:
 		old_sample.append(sample)
 		TYPE_SAMPLE[cell_type] = old_sample
 
+# given homer folder, go into homerResults and knownResults subfolders and extract all motif names
+def yank_all_motifs(wildcards):
+	import glob
+	path = 'homer/'
+	known_motifs = glob.glob(path + 'knownResults/*motif')
+	novel_motifs = glob.glob(path + 'homerResults/*motif')
+	all_motifs = known_motifs + novel_motifs
+	motif_names = [i.split('/')[-1] for i in all_motifs]
+	return ['homer/' + i +'.bed' for i in motif_names]
+	#[i.split('/')[-1] for i in all_motifs]
 
 localrules: pull_lane_fastq_from_nisc, retrieve_and_process_black_list, black_list, \
 	ucsc_view, total_reads, union_peaks, merge_peaks, bootstrap_peaks, \
@@ -39,7 +49,7 @@ localrules: pull_lane_fastq_from_nisc, retrieve_and_process_black_list, black_li
 	build_cisbp_master_file, download_HOCOMOCO_meme, common_peaks, reformat_motifs, \
 	merge_HOCOMOCO_cisbp, union_TFBS_pretty_ucsc, prettify_union_TFBS, \
 	ucsc_view_master, common_peaks_across_all, find_closest_TSS_against_unique_peaks, \
-	common_peaks_by_type
+	common_peaks_by_type, find_closest_TSS_to_all_common
 	#find_closest_TSS, find_closest_TSS_bootstrap
 
 wildcard_constraints:
@@ -60,9 +70,11 @@ rule all:
 		expand('msCentipede/closest_TSS/{cell_type}.{motif}.closestTSS.dat.gz', cell_type = list(TYPE_SAMPLE.keys()), motif = config['motif_IDs']),
 		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{motif}.union.HQ.pretty.bb', motif = config['motif_IDs']),
 		'/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_peaks.blackListed.narrowPeak.bb',
-		 'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
+		'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
 			config['peak_comparison_pair'][1] + '_common_peaks.closestTSS.blackListed.narrowPeak',
-		'homer/'
+		'homer/knownResults.html',
+		yank_all_motifs,
+		'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.bed'
 
 rule pull_lane_fastq_from_nisc:
 	output:
@@ -608,6 +620,24 @@ rule common_peaks_across_all:
 		cat {input} | sort -k1,1 -k2,2n | awk -v OFS='\t' '{{print $1,$2,$3,".",$4,".",$10,$11,$12}}' > {output}
 		"""
 
+# find closest TSS/transcript to each peak
+# finds 10 closest (-k 10)
+# also reports distance
+rule find_closest_TSS_to_all_common:
+	input:
+		'macs_peak/all_common_peaks.blackListed.narrowPeak.bed'
+	output:
+		'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.bed'
+	shell:
+		"""
+		module load {config[bedtools_version]}
+		cat {input} | \
+			sort -k1,1 -k2,2n | \
+					closestBed -g <( sort -k1,1 -k2,2n {config[bwa_genome_sizes]} ) \
+						-k 10 -d -a - -b <( sort -k1,1 -k2,2n annotation/tss_hg19.bed ) | \
+			gzip -f > {output}
+		"""
+
 # filter out unique peaks
 # with user given pair
 # the first in the pair given in config['peak_comparison_pair'] are the peaks kept against the second of the pair
@@ -679,13 +709,32 @@ rule homer_find_motifs:
 		control = 'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
 			config['peak_comparison_pair'][1] + '_common_peaks.blackListed.scramble.fasta'
 	output:
-		'homer/'
+		out_dir = 'homer/',
+		known = 'homer/knownResults.html'
 	shell:
 		"""
 		mkdir -p {output}
 		module load {config[homer_version]}
-		findMotifs.pl {input.exp} human {output} -fasta {input.control} -minlp -3 -humanGO
+		findMotifs.pl {input.exp} human {output.out_dir} -fasta {input.control} -minlp -3 -humanGO
 		"""
+
+# label unique_peaks with motifs that homer finds
+rule homer_annotate_peaks:
+	input:
+		homer_known = 'homer/knownResults.html',
+		homer_novel = 'homer/homerResults.html',
+		peak_file = 'macs_peak/all_common_peaks.blackListed.narrowPeak.bed'
+	output:
+		motif_bed = 'homer/peak_by_motif/{homer_motif}.bed',
+		peak_bed = 'homer/peak_info/{homer_motif}.DELETE_LATER.xls'
+	run:
+		import glob
+		motif_path = glob.glob(str(input.homer_known).split('/')[0] + '/*/' + wildcards.homer_motif)[0]
+		shell_call = 'module load {config[homer_version]}; \
+						annotatePeaks.pl {input.peak_file} hg19 -mbed {output.motif_bed} -m ' + \
+						motif_path + \
+						' > {output.peak_bed}'
+		shell(shell_call)
 
 # compute read coverage across common  peaks 
 rule multiBamSummary:
