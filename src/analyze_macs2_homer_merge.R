@@ -1,4 +1,5 @@
 peak <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/peak_full/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz', col_names = F)
+expression <- read_csv('~/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line_with_Diff_Exp.tsv')
 
 otx2 <- peak %>% 
   filter(!is.na(X11)) %>% # remove NA genes where the peak didn't get a match (no genes within 500kb of a peak)
@@ -23,3 +24,5 @@ mitf <- peak %>%
 mitf %>% spread(Tissue, Num_Peaks) %>% arrange(-GFP)
 
 mitf %>% select(-Total_TFBS_motifs) %>% spread(Tissue, Num_Peaks) %>% mutate(GFP_iPSC = GFP/iPSC) %>% arrange(-GFP_iPSC)
+
+mitf %>% select(-Total_TFBS_motifs) %>% spread(Tissue, Num_Peaks) %>% mutate(GFP_iPSC = GFP/iPSC) %>% arrange(-GFP_iPSC) %>% left_join(expression %>% select(-Line, -lsTPM, -`log2(lsTPM)`, -Rank) %>% unique())
