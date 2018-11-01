@@ -10,9 +10,9 @@ library(data.table)
 library(annotables)
 
 common_peaks_file <- args[1] # common_peaks_file <- '/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.bed'
-motif_bed_file <- args[2] # motif_bed_file <- '/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/homer/motif5.motif.bed'
-closest_num <- as.numeric(args[3]) #3 closest?
-output_file <- args[4] 
+#motif_bed_file <- args[2] # motif_bed_file <- '/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/homer/motif5.motif.bed'
+closest_num <- as.numeric(args[2]) #3 closest?
+output_file <- args[3] 
 
 common_peaks_raw <- fread(cmd = paste('gzcat', common_peaks_file))
 # 1. filter to closest n (args[4]) genes within 500,000bp
@@ -36,12 +36,12 @@ common_peaks <- common_peaks_raw %>%
                         TRUE ~ 'iPSC'))
   
 # load in motif bed
-motif_bed <- fread(motif_bed_file, skip = 1)
-motif <- motif_bed$V4[1]
-motif_bed[,motif] <- motif_bed$V5
-motif_bed <- motif_bed %>% as.tibble() %>% select(chrom = V1, start = V2, end = V3, 7)
+#motif_bed <- fread(motif_bed_file, skip = 1)
+#motif <- motif_bed$V4[1]
+#motif_bed[,motif] <- motif_bed$V5
+#motif_bed <- motif_bed %>% as.tibble() %>% select(chrom = V1, start = V2, end = V3, 7)
 
 # merge!
-output <- left_join(common_peaks, motif_bed)
+#output <- left_join(common_peaks, motif_bed)
 # output!
-write_tsv(output, path = output_file)
+write_tsv(common_peaks, path = output_file)
