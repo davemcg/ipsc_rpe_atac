@@ -13,6 +13,7 @@ delta <- read_csv('/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/RPE_vs_iPSC.result
 homer <- read_html(homer_html)
 processed <- (homer %>% html_table(header = T))[[1]]
 processed$Gene = sapply(processed[,gene_col], function(x) str_split(x, '\\(|\\/', n = 2)[[1]][1])
+processed$HomerName = processed[,gene_col]
 processed <- as.tibble(processed) 
 
 # left join's homer output with ipsc-RNA RNA-seq data for lsTPM values by GFP/RFP/iPSC
