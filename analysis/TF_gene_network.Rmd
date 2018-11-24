@@ -8,9 +8,10 @@ output:
     toc: true
 ---
 
+All Peak Analysis (not removing peaks in TSS)
 ```{r}
 library(tidyverse)
-peak <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/peak_full/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz', col_names = F)
+peak <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/peak_full/homer_all/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz', col_names = F)
 expression <- read_csv('~/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line_with_Diff_Exp.tsv')
 
 colnames(peak) <- c('chrom','start','stop','type','macs2_score','strand','thickStart','thickStop','RGB','Distance_to_Gene','Gene','Description','chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
@@ -57,8 +58,8 @@ for (i in motifs){
   TF_gene_stats_list[[i]] <- out
   print(i)
 }
-
-TF_gene_stats <- bind_rows(TF_gene_stats_list, .id = 'motif') %>% rowwise() %>% mutate(motif_core = toupper(gsub('\\(.*|11-GGGTGTGT,BestGuess:','',motif))) %>% ungroup()
+1
+TF_gene_stats <- bind_rows(TF_gene_stats_list, .id = 'motif') %>% rowwise() %>% mutate(motif_core = toupper(gsub('\\(.*|.*BestGuess:','',motif))) %>% ungroup()
 ```
 
 # Full table
@@ -87,8 +88,8 @@ TF_gene_stats %>% group_by(motif_core) %>% summarise(count = n(), Gene = paste(G
 TF_gene_stats %>% group_by(Gene) %>% summarise(count = n(), motif = paste(motif_core, collapse=',')) %>% arrange(-count) %>%  DT::datatable( filter = list(position = 'top', clear = FALSE))
 ```
 
-# First attempt at network
-No more than 10 genes assigned to a single TF
+# Network
+No more than 5 genes assigned to a single TF. Picking the top 5 genes by delta of GFP peaks - iPSC peaks, then breaking ties by taking the most differentially expressed by bulk RNA-seq RPE vs iPSC. 
 
 Red are the homer ID'ed TF(BS)
 
@@ -104,7 +105,10 @@ library(visNetwork)
 TF_gene_stats_n <- TF_gene_stats %>% 
   # filter(!grepl('GATA', motif_core)) %>% 
   group_by(motif_core) %>% 
-  top_n(10, delta) %>% # no more than n by tF
+  filter(delta > 2) %>% 
+  top_n(5, delta) %>% # no more than n by tF 
+  mutate(`(abs)log2FC` = abs(log2FoldChange__RPE_vs_iPSC)) %>% 
+  top_n(5,`(abs)log2FC`) %>% 
   #filter(!Gene %in% c('FZD8','OPCML','PFKP','NRIP1','TSHZ3', 'SOX6')) %>% # trimming out most common genes between TF
   ungroup()
 
