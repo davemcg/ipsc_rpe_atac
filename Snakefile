@@ -36,7 +36,7 @@ for line in metadata:
 # and write file names for homer annotation for each motif
 def yank_all_motifs(wildcards):
 	import glob
-	path = 'homer_GFP_exp_IPSC_background/'
+	path = 'homer_unique_peaks' + '_' + wildcards.peak_type + '/'
 	known_motifs = glob.glob(path + 'knownResults/*motif')
 	novel_motifs = glob.glob(path + 'homerResults/*motif')
 	all_motifs = known_motifs + novel_motifs
@@ -77,10 +77,9 @@ rule all:
 		'/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_peaks.blackListed.narrowPeak.bb',
 		'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
 			config['peak_comparison_pair'][1] + '_common_peaks.closestTSS.blackListed.narrowPeak',
-		'homer_unique_peaks/knownResults.html', 
 		'homer_GFP_exp_IPSC_background/knownResults.html',
 		'/data/mcgaugheyd/datashare/hufnagel/hg19/interesting_homer_motif.bb',
-		'peak_full/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz'
+		expand('peak_full/homer_{peak_type}/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz', peak_type = ['all','enhancers','promoters'])
 
 rule pull_lane_fastq_from_nisc:
 	output:
@@ -458,16 +457,17 @@ rule msCentipede_cat_by_motif:
 # I'll collapse the tx into genes later in R
 rule find_closest_TSS:
 	input:
-		'msCentipede/{cell_type}/{motif}.posterior.HQ.tsv'	
+		tsv = 'msCentipede/{cell_type}/{motif}.posterior.HQ.tsv',
+		tss = 'annotation/tss_hg19.bed'
 	output:
 		'msCentipede/closest_TSS/{cell_type}.{motif}.closestTSS.dat.gz'
 	shell:
 		"""
 		module load {config[bedtools_version]}
-		cat {input} | \
+		cat {input.tsv} | \
 			sort -k1,1 -k2,2n | \
 					closestBed -g <( sort -k1,1 -k2,2n {config[bwa_genome_sizes]} ) \
-						-k 10 -d -a - -b <( sort -k1,1 -k2,2n annotation/tss_hg19.bed ) | \
+						-k 10 -d -a - -b <( sort -k1,1 -k2,2n {input.tss} ) | \
 			gzip -f > {output}
 		"""
 
@@ -560,7 +560,7 @@ rule merge_peaks_by_type:
 	shell:
 		"""
 		module load {config[bedtools_version]}
-		bedtools merge -i {input} -c 5,7,10 -o mean > {output}
+		bedtools merge -d 150 -i {input} -c 5,7,10 -o mean > {output}
 		"""
 
 # only keep peaks which appear in two or individual peak calls and are 40% or more overlapping
@@ -654,16 +654,17 @@ rule summits_overlapping_common_peaks:
 # also reports distance
 rule find_closest_TSS_to_all_common:
 	input:
-		'macs_peak/all_common_peaks.blackListed.narrowPeak.bed'
+		bed = 'macs_peak/all_common_peaks.blackListed.narrowPeak.bed',
+		tss = 'annotation/tss_hg19.bed'
 	output:
 		'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.bed'
 	shell:
 		"""
 		module load {config[bedtools_version]}
-		cat {input} | \
+		cat {input.bed} | \
 			sort -k1,1 -k2,2n | \
 					closestBed -g <( sort -k1,1 -k2,2n {config[bwa_genome_sizes]} ) \
-						-k 10 -d -a - -b <( sort -k1,1 -k2,2n annotation/tss_hg19.bed ) | \
+						-k 10 -d -a - -b <( sort -k1,1 -k2,2n {input.tss} ) | \
 			gzip -f > {output}
 		"""
 
@@ -702,37 +703,45 @@ rule summits_in_unique_peaks:
 # finds 10 closest (-k 10)
 rule find_closest_TSS_against_unique_peaks:
 	input:
-		'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
-			config['peak_comparison_pair'][1] + '_common_peaks.blackListed.narrowPeak'
+		peak = 'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
+			config['peak_comparison_pair'][1] + '_common_peaks.blackListed.narrowPeak',
+		tss = 'annotation/tss_hg19.bed'
 	output:
 		 'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
 			config['peak_comparison_pair'][1] + '_common_peaks.closestTSS.blackListed.narrowPeak'
 	shell:
 		"""
 		module load {config[bedtools_version]}
-		cat {input} | \
+		cat {input.peak} | \
 			sort -k1,1 -k2,2n | \
 					closestBed -g <( sort -k1,1 -k2,2n {config[bwa_genome_sizes]} ) \
-						-k 10 -d -a - -b <( sort -k1,1 -k2,2n annotation/tss_hg19.bed ) | \
+						-k 10 -d -a - -b <( sort -k1,1 -k2,2n {input.tss} ) | \
 			gzip -f > {output}
 		"""
 
 # run homer on unique_peaks
 rule homer_find_motifs_unique_peaks:
 	input:
-		'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
-			config['peak_comparison_pair'][1] + '_common_peaks.blackListed.summits.bed'
+		peak = 'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
+			config['peak_comparison_pair'][1] + '_common_peaks.blackListed.summits.bed',
+		tss = 'annotation/tss_hg19.bed'
 	output:
-		out_dir = 'homer_unique_peaks/',
-		known = 'homer_unique_peaks/knownResults.html'
+		out_dir = 'homer_unique_peaks_{peak_type}/',
+		known = 'homer_unique_peaks_{peak_type}/knownResults.html',
+		novel = 'homer_unique_peaks_{peak_type}/homerResults.html'
 	threads:
 		8
-	shell:
-		"""
-		mkdir -p {output.out_dir}
-		module load {config[homer_version]}
-		findMotifsGenome.pl {input} hg19 {output.out_dir} -p {threads} -size 100 -preparsedDir homer_preparsed/
-		"""
+	run:
+		shell('mkdir -p {output.out_dir}')
+		if wildcards.peak_type == 'all':
+			shell("module load {config[homer_version]}; \
+					findMotifsGenome.pl <(awk '$4>99 {{print $0}}' {input.peak}) hg19 {output.out_dir} -p {threads} -size 100 -preparsedDir homer_preparsed/")
+		elif wildcards.peak_type == 'enhancers':
+			shell("module load {config[homer_version]}; \
+					findMotifsGenome.pl <(awk '$4>99 {{print $0}}' {input.peak} | intersectBed -a - -b {input.tss} -v ) hg19 {output.out_dir} -p {threads} -size 100 -preparsedDir homer_preparsed/")
+		else: # promoter
+			shell("module load {config[homer_version]}; \
+					findMotifsGenome.pl <(awk '$4>99 {{print $0}}' {input.peak} | intersectBed -a - -b {input.tss} ) hg19 {output.out_dir} -p {threads} -size 100 -preparsedDir homer_preparsed/")
 
 # run homer on comparison 1 (GFP)
 # with comparison 2 (IPSC) as the "background"
@@ -749,19 +758,20 @@ rule homer_find_motifs_IPSC_background:
 		"""
 		mkdir -p {output.out_dir}
 		module load {config[homer_version]}
-		findMotifsGenome.pl {input.exp} {config[homer_genome]} {output.out_dir} -bg {input.control} -p {threads} -size 100
+		# filter to only use peaks with a macs2 score > 99
+		findMotifsGenome.pl <(awk '$4>99 {{print $0}}' {input.exp}) {config[homer_hg19]} {output.out_dir} -bg <(awk '$4>99 {{print $0}}' {input.control}) -p {threads} -size 100
 		"""
 
 
 # label unique_peaks with motifs that homer finds
 rule homer_annotate_peaks:
 	input:
-		homer_known = 'homer_GFP_exp_IPSC_background/knownResults.html',
-		homer_novel = 'homer_GFP_exp_IPSC_background/homerResults.html',
+		homer_known = 'homer_unique_peaks_{peak_type}/knownResults.html',
+		homer_novel = 'homer_unique_peaks_{peak_type}/homerResults.html',
 		peak_file = 'macs_peak/all_common_peaks.blackListed.narrowPeak.bed'
 	output:
-		motif_bed = 'homer_GFP_exp_IPSC_background/peak_by_motif/{homer_motif}.bed',
-		peak_bed = 'homer_GFP_exp_IPSC_background/peak_info/{homer_motif}.DELETE_LATER.xls'
+		motif_bed = 'homer_unique_peaks_{peak_type}/peak_by_motif/{homer_motif}.bed',
+		peak_bed = 'homer_unique_peaks_{peak_type}/peak_info/{homer_motif}.DELETE_LATER.xls'
 	run:
 		import glob
 		motif_path = glob.glob(str(input.homer_known).split('/')[0] + '/*/' + wildcards.homer_motif)[0]
@@ -774,11 +784,11 @@ rule homer_annotate_peaks:
 # label homer ID'ed TF with differential RNA-seq expression
 rule diff_TF_expression:
 	input:
-		homer_known = 'homer_GFP_exp_IPSC_background/knownResults.html',
-		homer_novel = 'homer_GFP_exp_IPSC_background/homerResults.html'
+		homer_known = 'homer_unique_peaks_{peak_type}/knownResults.html',
+		homer_novel = 'homer_unique_peaks_{peak_type}/homerResults.html'
 	output:
-		known = 'homer_GFP_exp_IPSC_background/knownResults_matched_with_RNAseq.tsv',
-		novel = 'homer_GFP_exp_IPSC_background/homerResults_matched_with_RNAseq.tsv'
+		known = 'homer_unique_peaks_{peak_type}/knownResults_matched_with_RNAseq.tsv',
+		novel = 'homer_unique_peaks_{peak_type}/homerResults_matched_with_RNAseq.tsv'
 	shell:
 		"""
 		module load {config[R_version]}
@@ -790,10 +800,10 @@ rule diff_TF_expression:
 # list of targets
 rule TF_to_target:
 	input:
-		known = 'homer_GFP_exp_IPSC_background/knownResults_matched_with_RNAseq.tsv',
-		novel = 'homer_GFP_exp_IPSC_background/homerResults_matched_with_RNAseq.tsv'
+		known = 'homer_unique_peaks_{peak_type}/knownResults_matched_with_RNAseq.tsv',
+		novel = 'homer_unique_peaks_{peak_type}/homerResults_matched_with_RNAseq.tsv'
 	output:
-		targets = 'homer_GFP_exp_IPSC_background/targets.txt'
+		targets = 'homer_unique_peaks_{peak_type}/targets.txt'
 	shell:
 		"""
 		module load {config[R_version]}
@@ -804,21 +814,22 @@ rule TF_to_target:
 # homer output is a bed {output.motif_bed} with the coordinates of the TFBS
 rule cat_homer_annotate_peaks:
 	input:
-		yank_all_motifs
+		motifs = yank_all_motifs,
+		homer = 'homer_unique_peaks_{peak_type}/homerResults.html'
 	output:
-		'peak_full/homer/all_homer_motif.bed.gz'
+		'peak_full/homer_{peak_type}/all_homer_motif.bed.gz'
 	shell:
 		"""
-		cat {input} | grep -v "track name" | uniq | sort -k1,1 -k2,2n | uniq | bgzip -cf > {output}
+		cat {input.motifs} | grep -v "track name" | uniq | sort -k1,1 -k2,2n | uniq | bgzip -cf > {output}
 		"""
 
 # filter down all_homer_motif.bed.gz
 rule highlighted_homer_motif:
 	input:
-		bed = 'peak_full/homer/all_homer_motif.bed.gz',
-		grep = 'homer_GFP_exp_IPSC_background/targets.txt'
+		bed = 'peak_full/homer_{peak_type}/all_homer_motif.bed.gz',
+		grep = 'homer_unique_peaks_{peak_type}/targets.txt'
 	output:
-		'peak_full/homer/interesting_homer_motif.bed.gz'
+		'peak_full/homer_{peak_type}/interesting_homer_motif.bed.gz'
 	shell:
 		"""
 		zcat {input.bed} | grep -f {input.grep} - | bgzip -cf > {output}
@@ -843,13 +854,13 @@ rule clean_all_common_peaks:
 rule intersect_homer_motifs_with_all_common_peaks:
 	input:
 		a = 'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.cleaned.bed',
-		b = 'peak_full/homer/interesting_homer_motif.bed.gz'
+		b = 'peak_full/homer_{peak_type}/interesting_homer_motif.bed.gz'
 	output:
-		'peak_full/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz'
+		'peak_full/homer_{peak_type}/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz'
 	shell:
 		"""
 		module load {config[bedtools_version]}
-		intersectBed -a {input.a} -b {input.b} -wa -wb | bgzip -cf > {output}
+		intersectBed -a <(sort -k1,1 -k2,2n {input.a}) -b {input.b} -wa -wb -sorted | bgzip -cf > {output}
 		"""
 
 # compute read coverage across common  peaks 
