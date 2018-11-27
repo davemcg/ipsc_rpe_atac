@@ -1,0 +1,162 @@
+---
+title: "Network Report"
+author: "David McGaughey"
+date: "11/27/2018"
+output: 
+  html_document:
+    theme: flatly
+    toc: true
+---
+
+
+```{r Set parameter loading, include = FALSE}
+opts_chunk$set(echo = F,
+               warning = F,
+               message = F)
+```
+
+```{r, echo=F,  results = 'hide'}
+library(tidyverse)
+peak <- read_tsv(params$data, col_names = F)
+expression <- read_csv('~/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line_with_Diff_Exp.tsv')
+
+colnames(peak) <- c('chrom','start','stop','type','macs2_score','strand','thickStart','thickStop','RGB','Distance_to_Gene','Gene','Description','chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
+
+motifs <- peak$motif %>% unique()
+
+# create gene centric info on peak/motif and differential gene expression iPSC <-> RPE
+grouped_stats <- list()
+
+for (i in motifs){
+  out <- peak %>% 
+    filter(!is.na(Gene)) %>% # remove NA genes where the peak didn't get a match (no genes within 500kb of a peak)
+    filter(motif == i) %>% # only retain the motif TFBS homer hits
+    group_by(type, chrom, start, stop, Gene) %>% # group by GFP/RFP,iPSC, the macs2 peak, and the gene
+    summarise(Num_TFBS_motifs=n()) %>%  # count total number of motifs
+    group_by(type, Gene) %>% # group now by GFP/RFP/IPSC and gene
+    summarise(Total_TFBS_motifs = sum(Num_TFBS_motifs), Num_Peaks = n()) %>% # now add num of peaks near gene
+    select(type, Gene, Total_TFBS_motifs, Num_Peaks)
+  grouped_stats[[i]] <- out
+  print(i)
+}
+
+# further cut down to most interesting genes by differential peak activity and 
+# expression by TF
+
+TF_gene_stats_list <- list()
+
+for (i in motifs){
+  
+  # ID differentially peak activity around genes for a TF
+  out <- grouped_stats[[i]] %>% select(-Total_TFBS_motifs) %>% 
+    spread(type, Num_Peaks)
+  out[is.na(out)] <- 0
+  out <- out %>% 
+    mutate(ratio = GFP/iPSC, delta = GFP - iPSC) %>% 
+    arrange(-delta) %>% 
+    left_join(expression %>% 
+                select(Gene, log2FoldChange__RPE_vs_iPSC, padj__RPE_vs_iPSC) %>% 
+                unique()) %>% 
+    filter(!is.na(padj__RPE_vs_iPSC), 
+           abs(log2FoldChange__RPE_vs_iPSC) > 1, 
+           padj__RPE_vs_iPSC < 0.01) %>% 
+    filter(delta > 1, ratio > 1.5) # only keep 
+  TF_gene_stats_list[[i]] <- out
+  print(i)
+}
+
+TF_gene_stats <- bind_rows(TF_gene_stats_list, .id = 'motif') %>% rowwise() %>% mutate(motif_core = toupper(gsub('\\(.*|.*BestGuess:','',motif))) %>% ungroup()
+```
+
+# Full table
+The GFP/iPSC/RFP columns are the number of peaks with the motif associated (by distance) to the gene
+
+Ratio is GFP/RFP
+
+Delta is GFP - RFP
+
+If log2FC is positive, then the expression of the gene is higher in RPE vs iPSC
+```{r}
+TF_gene_stats %>% dplyr::select(motif = motif_core, Gene:padj__RPE_vs_iPSC, motif_full = motif) %>% DT::datatable( filter = list(position = 'top', clear = FALSE),
+                                                                                                                   extensions = 'Buttons', options = list(
+                                                                                                                     lengthMenu = list(c(5, 15, 30, 60, 100, -1), list('5', '15', '30', '60', '100', 'All')),
+                                                                                                                     dom = 'Bfrtip',
+                                                                                                                     buttons = c('copy', 'csv', 'excel', 'pageLength')
+                                                                                                                   ))
+```
+
+# count number of genes associated with each TFBS
+```{r}
+TF_gene_stats %>% group_by(motif_core) %>% summarise(count = n(), Gene = paste(Gene, collapse = ',') ) %>% arrange(-count) %>% DT::datatable()
+```
+# most common genes associated with TF
+```{r}
+TF_gene_stats %>% group_by(Gene) %>% summarise(count = n(), motif = paste(motif_core, collapse=',')) %>% arrange(-count) %>%  DT::datatable( filter = list(position = 'top', clear = FALSE))
+```
+
+# Network
+No more than 5 genes assigned to a single TF. Picking the top 5 genes by delta of GFP peaks - iPSC peaks, then breaking ties by taking the most differentially expressed by bulk RNA-seq RPE vs iPSC. 
+
+Red are the homer ID'ed TF(BS)
+
+Pink are genes labelled as TF by GO term (but not ID'ed by homer)
+
+If you hover you get the log2FC
+
+You can zoom in and out
+
+Clicking on a node gives you all the other nodes within 2 edges
+```{r, fig.height=6, fig.width=6}
+library(visNetwork)
+TF_gene_stats_n <- TF_gene_stats %>% 
+  # filter(!grepl('GATA', motif_core)) %>% 
+  group_by(motif_core) %>% 
+  filter(delta > 2) %>% 
+  top_n(5, delta) %>% # no more than n by tF 
+  mutate(`(abs)log2FC` = abs(log2FoldChange__RPE_vs_iPSC)) %>% 
+  top_n(5,`(abs)log2FC`) %>% 
+  #filter(!Gene %in% c('FZD8','OPCML','PFKP','NRIP1','TSHZ3', 'SOX6')) %>% # trimming out most common genes between TF
+  ungroup()
+
+TF <- TF_gene_stats_n %>%
+  distinct(motif_core) %>%
+  rename(label = motif_core)
+
+genes <- TF_gene_stats_n %>%
+  distinct(Gene) %>%
+  rename(label = Gene)
+
+nodes <- full_join(TF, genes, by = "label") %>%  arrange(label) %>% rowid_to_column("id") %>% mutate(group = case_when(label %in% TF$label ~ 'TF', 
+                                                                                                                       TRUE ~ 'Gene'),
+                                                                                                     shape = 'box') %>% 
+  left_join(., expression %>% 
+              select(Gene, value = log2FoldChange__RPE_vs_iPSC, goTF = TF) %>% 
+              unique(), by = c("label" = "Gene")) %>% 
+  mutate(title = paste0('Gene: ', label, '<br>log2FC: ', round(value,2))) %>% 
+  mutate(group = case_when(group == 'TF' ~ 'TF',
+                           goTF == 'Yes' ~ 'goTF',
+                           TRUE ~ 'Gene'))
+
+
+
+
+edges <- TF_gene_stats_n %>%  
+  select(TF = motif_core, Gene, weight = log2FoldChange__RPE_vs_iPSC) %>% 
+  unique() %>% 
+  left_join(nodes, by = c("TF" = "label")) %>% 
+  rename(from = id) %>% 
+  left_join(nodes, by = c("Gene" = "label")) %>% 
+  rename(to = id) %>% 
+  ungroup() %>% 
+  select(from, to, weight) 
+
+visNetwork(nodes, edges, height = "700px", width = "100%") %>% 
+  visGroups(groupname = 'TF', color='red') %>% 
+  visGroups(groupname = 'goTF', color = 'pink') %>% 
+  visOptions(highlightNearest = list(enabled = T, degree = 2),
+             nodesIdSelection = TRUE) %>% 
+  visPhysics(stabilization = TRUE) %>% 
+  visEdges(smooth = FALSE) %>% 
+  visInteraction(navigationButtons = TRUE)
+```
+
