@@ -9,13 +9,8 @@ output:
 ---
 
 
-```{r Set parameter loading, include = FALSE}
-opts_chunk$set(echo = F,
-               warning = F,
-               message = F)
-```
 
-```{r, echo=F,  results = 'hide'}
+```{r, echo=F, results = 'hide'}
 library(tidyverse)
 peak <- read_tsv(params$data, col_names = F)
 expression <- read_csv('~/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line_with_Diff_Exp.tsv')
