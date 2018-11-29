@@ -45,16 +45,15 @@ def yank_all_motifs(wildcards):
 	#return [path + 'peak_by_motif/' + i + '.bed' for i in motif_names][0:5] # use for config_pretty.yaml for making dag
 
 localrules: pull_lane_fastq_from_nisc, retrieve_and_process_black_list, black_list, \
-	total_reads, union_peaks, merge_peaks, bootstrap_peaks, \
-	peak_fasta, remove_tss_promoters, build_tss_regions, \
-	build_cisbp_master_file, download_HOCOMOCO_meme, common_peaks, reformat_motifs, \
-	merge_HOCOMOCO_cisbp, union_TFBS, union_TFBS_pretty_ucsc, prettify_union_TFBS, \
-	ucsc_view_master, common_peaks_across_all, find_closest_TSS_against_unique_peaks, \
+	total_reads, build_tss_regions, \
+	download_HOCOMOCO_meme, reformat_motifs, \
+	union_TFBS, union_TFBS_pretty_ucsc, prettify_union_TFBS, \
+	common_peaks_across_all, find_closest_TSS_against_unique_peaks, \
 	common_peaks_by_type, find_closest_TSS_to_all_common, \
-	extract_TF_score, cat_homer_annotate_peaks, label_with_TF_RNA_seq_expression, \
-	find_closest_TSS, homer_scramble_fasta,union_summits_by_type, \
-	get_fasta_cell_types, get_fasta_comparison, summits_overlapping_common_peaks, \
-	diff_TF_expression, TF_to_target,  highlighted_homer_motif, cat_homer_annotate_peak, \
+	label_with_TF_RNA_seq_expression, \
+	find_closest_TSS, union_summits_by_type, \
+	summits_overlapping_common_peaks, \
+	TF_to_target,  highlighted_homer_motif, cat_homer_annotate_peak, \
 	intersect_homer_motifs_with_all_common_peaks, clean_all_common_peaks, \
 	ucsc_view_homer_motifs, ucsc_view_bigWig, ucsc_view_common_peaks
 
@@ -80,7 +79,7 @@ rule all:
 #		'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
 #			config['peak_comparison_pair'][1] + '_common_peaks.closestTSS.blackListed.narrowPeak',
 		'/data/mcgaugheyd/datashare/hufnagel/hg19/interesting_homer_motif.bb',
-		expand('network_reports/{comparison}_{peak_type}_networkAnalysis.html', comparison = config['peak_comparison_pair'], peak_type = ['all','enhancers','promoters'])
+		expand('network_reports/{comparison}_{peak_type}/{comparison}_{peak_type}_networkAnalysis.html', comparison = config['peak_comparison_pair'], peak_type = ['all','enhancers','promoters'])
 
 rule pull_lane_fastq_from_nisc:
 	output:
@@ -591,6 +590,36 @@ rule common_peaks_by_type:
 		tsv.close()
 		out.close()
 
+# further filter down common_peaks_by_type by overlapping with Smith .. Frazer iPSC-RPE h3k27Ac ChIP-Seq
+rule overlap_with_RPE_h3k27ac:
+	input:
+		atac = 'macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak',
+		rpe1 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_1.bed.gz',
+		rpe2 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_2.bed.gz',
+		rpe3 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_3.bed.gz',
+		rpe4 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_4.bed.gz',
+		rpe5 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_5.bed.gz',
+		rpe6 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_6.bed.gz',
+		rpe7 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_7.bed.gz',
+		rpe8 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_8.bed.gz',
+		rpe9 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_9.bed.gz',
+		ips1 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ENCFF111WIP.bed.gz',
+		ips2 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ENCFF369AMU.bed.gz',
+		ips3 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ENCFF680AQK.bed.gz',
+	output:
+		'macs_peak/{cell_type}_common_peaks.h3k27ac_intersect.blackListed.narrowPeak'
+	run:
+		if wildcards.cell_type == 'IPSC':
+			#shell("module load {config[bedtools_version]}; \
+			#		bedtools intersect -a {input.atac} -b <(zcat {input.ips1} {input.ips2} {input.ips3} | sort -k1,1 -k2,2n)  \
+			#		> {output}")
+			shell("cp {input.atac} {output}")
+		else:
+			shell("module load {config[bedtools_version]}; \
+					bedtools intersect -a {input.atac} -b <(zcat {input.rpe1} {input.rpe2} {input.rpe3} \
+					{input.rpe4} {input.rpe5} {input.rpe6} {input.rpe7} {input.rpe8} {input.rpe9} | sort -k1,1 -k2,2n) -c | \
+					awk '$13 > 2 {{print $0}}' > {output}")
+		
 # reformat union_TFBS to turn into proper bed and prep for UCSC viewing
 rule prettify_peaks:
 	input:
@@ -636,6 +665,7 @@ rule common_peaks_across_all:
 		"""
 		cat {input} | sort -k1,1 -k2,2n | awk -v OFS='\t' '{{print $1,$2,$3,".",$4,".",$10,$11,$12}}' > {output}
 		"""
+
 # get summits in the 'macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak
 # for use in homer motif finding
 rule summits_overlapping_common_peaks:
@@ -674,8 +704,8 @@ rule find_closest_TSS_to_all_common:
 # the first in the pair given in config['peak_comparison_pair'] are the peaks kept against the second of the pair
 rule unique_peaks:
 	input:
-		one = lambda wildcards: 'macs_peak/' + wildcards.comparison.split('__not__')[0] + '_common_peaks.blackListed.narrowPeak',
-		two = lambda wildcards: 'macs_peak/' + wildcards.comparison.split('__not__')[1] + '_common_peaks.blackListed.narrowPeak'
+		one = lambda wildcards: 'macs_peak/' + wildcards.comparison.split('__not__')[0] + '_common_peaks.h3k27ac_intersect.blackListed.narrowPeak',
+		two = lambda wildcards: 'macs_peak/' + wildcards.comparison.split('__not__')[1] + '_common_peaks.h3k27ac_intersect.blackListed.narrowPeak'
 	output:
 		'macs_peak/{comparison}_common_peaks.blackListed.narrowPeak'
 	shell:
@@ -846,17 +876,17 @@ rule TF_gene_network_R:
 	input:
 		'peak_full/homer_{comparison}/{peak_type}/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz'
 	output:
-		file = 'network_reports/{comparison}_{peak_type}_networkAnalysis.html'
+		file = 'network_reports/{comparison}_{peak_type}/{comparison}_{peak_type}_networkAnalysis.html'
 	params:
 		file = '{comparison}_{peak_type}_networkAnalysis.html',
-		folder = 'network_reports'
+		folder = 'network_reports/{comparison}_{peak_type}'
 	shell:
 		"""
 		module load {config[R_version]}
-		Rscript -e "rmarkdown::render('~/git/ipsc_rpe_atac/src/network_analysis.Rmd',
-                      output_file = {params.file},
-                      output_dir = {params.folder},
-                      params = list(data = {input}))"
+		cp ~/git/ipsc_rpe_atac/src/network_analysis.Rmd {params.folder}/network_analysis.Rmd
+		Rscript -e "rmarkdown::render('{params.folder}/network_analysis.Rmd', \
+                      output_file = '{params.file}', \
+                      params = list(datafile = '../../{input}'))"
 		"""
 
 # compute read coverage across common  peaks 
