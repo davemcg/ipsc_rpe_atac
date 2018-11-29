@@ -6,13 +6,16 @@ output:
   html_document:
     theme: flatly
     toc: true
+params:
+  datafile:
+    value: NA
+
 ---
 
-
-
+Network Analysis
 ```{r, echo=F, results = 'hide'}
 library(tidyverse)
-peak <- read_tsv(params$data, col_names = F)
+peak <- read_tsv(params$datafile, col_names = F)
 expression <- read_csv('~/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line_with_Diff_Exp.tsv')
 
 colnames(peak) <- c('chrom','start','stop','type','macs2_score','strand','thickStart','thickStop','RGB','Distance_to_Gene','Gene','Description','chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
@@ -80,11 +83,11 @@ TF_gene_stats %>% dplyr::select(motif = motif_core, Gene:padj__RPE_vs_iPSC, moti
                                                                                                                    ))
 ```
 
-# count number of genes associated with each TFBS
+# Count number of genes associated with each TFBS
 ```{r}
 TF_gene_stats %>% group_by(motif_core) %>% summarise(count = n(), Gene = paste(Gene, collapse = ',') ) %>% arrange(-count) %>% DT::datatable()
 ```
-# most common genes associated with TF
+# Most common genes associated with TF
 ```{r}
 TF_gene_stats %>% group_by(Gene) %>% summarise(count = n(), motif = paste(motif_core, collapse=',')) %>% arrange(-count) %>%  DT::datatable( filter = list(position = 'top', clear = FALSE))
 ```
