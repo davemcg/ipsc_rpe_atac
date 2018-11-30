@@ -9,6 +9,8 @@ output:
 params:
   datafile:
     value: NA
+  expression:
+    value: NA
 
 ---
 
@@ -16,7 +18,7 @@ Network Analysis
 ```{r, echo=F, results = 'hide'}
 library(tidyverse)
 peak <- read_tsv(params$datafile, col_names = F)
-expression <- read_csv('~/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line_with_Diff_Exp.tsv')
+expression <- read_csv(params$expression)
 
 colnames(peak) <- c('chrom','start','stop','type','macs2_score','strand','thickStart','thickStop','RGB','Distance_to_Gene','Gene','Description','chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
 
@@ -53,11 +55,11 @@ for (i in motifs){
     mutate(ratio = GFP/iPSC, delta = GFP - iPSC) %>% 
     arrange(-delta) %>% 
     left_join(expression %>% 
-                select(Gene, log2FoldChange__RPE_vs_iPSC, padj__RPE_vs_iPSC) %>% 
+                select(Gene, log2FoldChange, padj) %>% 
                 unique()) %>% 
-    filter(!is.na(padj__RPE_vs_iPSC), 
-           abs(log2FoldChange__RPE_vs_iPSC) > 1, 
-           padj__RPE_vs_iPSC < 0.01) %>% 
+    filter(!is.na(padj), 
+           abs(log2FoldChange) > 1, 
+           padj < 0.01) %>% 
     filter(delta > 1, ratio > 1.5) # only keep 
   TF_gene_stats_list[[i]] <- out
   print(i)
@@ -69,13 +71,13 @@ TF_gene_stats <- bind_rows(TF_gene_stats_list, .id = 'motif') %>% rowwise() %>% 
 # Full table
 The GFP/iPSC/RFP columns are the number of peaks with the motif associated (by distance) to the gene
 
-Ratio is GFP/RFP
+Ratio is GFP/(RFP or iPSC)
 
-Delta is GFP - RFP
+Delta is GFP - (RFP or iPSC)
 
-If log2FC is positive, then the expression of the gene is higher in RPE vs iPSC
+If log2FC is positive, then the expression of the gene is higher in GFP vs (RFP or iPSC)
 ```{r}
-TF_gene_stats %>% dplyr::select(motif = motif_core, Gene:padj__RPE_vs_iPSC, motif_full = motif) %>% DT::datatable( filter = list(position = 'top', clear = FALSE),
+TF_gene_stats %>% dplyr::select(motif = motif_core, Gene:padj, motif_full = motif) %>% DT::datatable( filter = list(position = 'top', clear = FALSE),
                                                                                                                    extensions = 'Buttons', options = list(
                                                                                                                      lengthMenu = list(c(5, 15, 30, 60, 100, -1), list('5', '15', '30', '60', '100', 'All')),
                                                                                                                      dom = 'Bfrtip',
@@ -111,7 +113,7 @@ TF_gene_stats_n <- TF_gene_stats %>%
   group_by(motif_core) %>% 
   filter(delta > 2) %>% 
   top_n(5, delta) %>% # no more than n by tF 
-  mutate(`(abs)log2FC` = abs(log2FoldChange__RPE_vs_iPSC)) %>% 
+  mutate(`(abs)log2FC` = abs(log2FoldChange)) %>% 
   top_n(5,`(abs)log2FC`) %>% 
   #filter(!Gene %in% c('FZD8','OPCML','PFKP','NRIP1','TSHZ3', 'SOX6')) %>% # trimming out most common genes between TF
   ungroup()
@@ -128,7 +130,7 @@ nodes <- full_join(TF, genes, by = "label") %>%  arrange(label) %>% rowid_to_col
                                                                                                                        TRUE ~ 'Gene'),
                                                                                                      shape = 'box') %>% 
   left_join(., expression %>% 
-              select(Gene, value = log2FoldChange__RPE_vs_iPSC, goTF = TF) %>% 
+              select(Gene, value = log2FoldChange, goTF = TF) %>% 
               unique(), by = c("label" = "Gene")) %>% 
   mutate(title = paste0('Gene: ', label, '<br>log2FC: ', round(value,2))) %>% 
   mutate(group = case_when(group == 'TF' ~ 'TF',
@@ -139,7 +141,7 @@ nodes <- full_join(TF, genes, by = "label") %>%  arrange(label) %>% rowid_to_col
 
 
 edges <- TF_gene_stats_n %>%  
-  select(TF = motif_core, Gene, weight = log2FoldChange__RPE_vs_iPSC) %>% 
+  select(TF = motif_core, Gene, weight = log2FoldChange) %>% 
   unique() %>% 
   left_join(nodes, by = c("TF" = "label")) %>% 
   rename(from = id) %>% 
