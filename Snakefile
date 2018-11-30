@@ -797,12 +797,18 @@ rule label_with_TF_RNA_seq_expression:
 	output:
 		known = 'homer_unique_peaks_{comparison}/{peak_type}/knownResults_matched_with_RNAseq.tsv',
 		novel = 'homer_unique_peaks_{comparison}/{peak_type}/homerResults_matched_with_RNAseq.tsv'
-	shell:
-		"""
-		module load {config[R_version]}
-		Rscript ~/git/ipsc_rpe_atac/src/match_TF_to_expression.R {input.homer_known} "Name" {output.known}
-		Rscript ~/git/ipsc_rpe_atac/src/match_TF_to_expression.R {input.homer_novel} "Best Match/Details" {output.novel}
-		"""
+	params:
+		gfp_vs_ipsc = '/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/GFP_vs_iPSC.results.csv',
+		gfp_vs_rfp = '/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/GFP_vs_RFP.results.csv'
+	run:
+		if wildcards.comparison == 'GFP__not__IPSC':
+			shell("module load {config[R_version]}; \
+			Rscript ~/git/ipsc_rpe_atac/src/match_TF_to_expression.R {input.homer_known} 'Name' {output.known} {params.gfp_vs_ipsc}; \
+			Rscript ~/git/ipsc_rpe_atac/src/match_TF_to_expression.R {input.homer_novel} 'Best Match/Details' {output.novel} {params.gfp_vs_ipsc}"
+		else:
+			shell("module load {config[R_version]}; \
+			Rscript ~/git/ipsc_rpe_atac/src/match_TF_to_expression.R {input.homer_known} 'Name' {output.known} {params.gfp_vs_rfp}; \
+			Rscript ~/git/ipsc_rpe_atac/src/match_TF_to_expression.R {input.homer_novel} 'Best Match/Details' {output.novel} {params.gfp_vs_rfp}"
 
 # filter label_with_TF_RNA_seq_expression to create
 # list of targets

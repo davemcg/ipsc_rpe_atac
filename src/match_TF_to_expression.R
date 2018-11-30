@@ -1,4 +1,4 @@
-#Rscript
+#ppRscript
 
 library(rvest)
 library(tidyverse)
@@ -7,9 +7,10 @@ args = commandArgs(trailingOnly=TRUE)
 homer_html <- args[1]
 gene_col <- args[2]
 output_file <- args[3]
+delta_file <- args[4]
 
 lsTPM <- read_tsv('/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line.tsv')
-delta <- read_csv('/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/RPE_vs_iPSC.results.csv')
+delta <- read_csv(args[4]) #read_csv('/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/RPE_vs_iPSC.results.csv')
 homer <- read_html(homer_html)
 processed <- (homer %>% html_table(header = T))[[1]]
 processed$Gene = sapply(processed[,gene_col], function(x) str_split(x, '\\(|\\/', n = 2)[[1]][1])
