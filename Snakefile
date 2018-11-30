@@ -72,13 +72,11 @@ rule all:
 		'deeptools/multiBamSummary.tsv',
 		'metrics/reads_by_sample.txt',
 		'fastqc/multiqc/multiqc_report.html',
-		#'macs_peak/all_common_peaks.blackListed.narrowPeak',
 		expand('msCentipede/closest_TSS/{cell_type}.{motif}.closestTSS.dat.gz', cell_type = list(TYPE_SAMPLE.keys()), motif = config['motif_IDs']),
 		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{motif}.union.HQ.pretty.bb', motif = config['motif_IDs']),
 		'/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_peaks.blackListed.narrowPeak.bb',
-#		'macs_peak/' + config['peak_comparison_pair'][0] + '_vs_' + \
-#			config['peak_comparison_pair'][1] + '_common_peaks.closestTSS.blackListed.narrowPeak',
 		'/data/mcgaugheyd/datashare/hufnagel/hg19/interesting_homer_motif.bb',
+		expand('macs_peak/{comparison}_peaks.xls', comparison = config['peak_comparison_pair']),
 		expand('network_reports/{comparison}_{peak_type}/{comparison}_{peak_type}_networkAnalysis.html', comparison = config['peak_comparison_pair'], peak_type = ['all','enhancers','promoters'])
 
 rule pull_lane_fastq_from_nisc:
@@ -262,6 +260,26 @@ rule peak_calling:
 			-n {wildcards.sample} \
 			--outdir macs_peak
 		"""
+
+# Peak calling for GFP vs RFP and RFP vs iPSC
+# macs2
+rule peak_calling_comparator:
+	input:
+		t = lambda wildcards: expand('merged_bam_HQ/{sample}.q5.rmdup.bam', sample = TYPE_SAMPLE[wildcards.comparison.split('__not__')[0.upper()]]),
+		c = lambda wildcards: expand('merged_bam_HQ/{sample}.q5.rmdup.bam', sample = TYPE_SAMPLE[wildcards.comparison.split('__not__')[1.upper()]])
+	output:
+		peaks = 'macs_peak/{comparison}_peaks.xls',
+		narrow_peaks = 'macs_peak/{comparison}_peaks.narrowPeak',
+		summits = 'macs_peak/{comparison}_summits.bed'
+	shell:
+		"""
+		module load {config[macs2_version]}
+		macs2 callpeak -f BAMPE -g "hs" -t {input.t} -c {input.c} -q 0.01 \
+			--keep-dup all \
+			-n {wildcards.sample} \
+			--outdir macs_peak
+		"""
+
 # blacklist
 # remove peaks called in ENCODE black list regions
 # https://sites.google.com/site/anshulkundaje/projects/blacklists
@@ -804,11 +822,11 @@ rule label_with_TF_RNA_seq_expression:
 		if wildcards.comparison == 'GFP__not__IPSC':
 			shell("module load {config[R_version]}; \
 			Rscript ~/git/ipsc_rpe_atac/src/match_TF_to_expression.R {input.homer_known} 'Name' {output.known} {params.gfp_vs_ipsc}; \
-			Rscript ~/git/ipsc_rpe_atac/src/match_TF_to_expression.R {input.homer_novel} 'Best Match/Details' {output.novel} {params.gfp_vs_ipsc}"
+			Rscript ~/git/ipsc_rpe_atac/src/match_TF_to_expression.R {input.homer_novel} 'Best Match/Details' {output.novel} {params.gfp_vs_ipsc}")
 		else:
 			shell("module load {config[R_version]}; \
 			Rscript ~/git/ipsc_rpe_atac/src/match_TF_to_expression.R {input.homer_known} 'Name' {output.known} {params.gfp_vs_rfp}; \
-			Rscript ~/git/ipsc_rpe_atac/src/match_TF_to_expression.R {input.homer_novel} 'Best Match/Details' {output.novel} {params.gfp_vs_rfp}"
+			Rscript ~/git/ipsc_rpe_atac/src/match_TF_to_expression.R {input.homer_novel} 'Best Match/Details' {output.novel} {params.gfp_vs_rfp}")
 
 # filter label_with_TF_RNA_seq_expression to create
 # list of targets
@@ -885,15 +903,26 @@ rule TF_gene_network_R:
 		file = 'network_reports/{comparison}_{peak_type}/{comparison}_{peak_type}_networkAnalysis.html'
 	params:
 		file = '{comparison}_{peak_type}_networkAnalysis.html',
-		folder = 'network_reports/{comparison}_{peak_type}'
-	shell:
-		"""
-		module load {config[R_version]}
-		cp ~/git/ipsc_rpe_atac/src/network_analysis.Rmd {params.folder}/network_analysis.Rmd
-		Rscript -e "rmarkdown::render('{params.folder}/network_analysis.Rmd', \
+		folder = 'network_reports/{comparison}_{peak_type}',
+		gfp_vs_ipsc = '/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/GFP_vs_iPSC.results.csv',
+		gfp_vs_rfp = '/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/GFP_vs_RFP.results.csv',
+		gfp_vs_ipsc_file = 'GFP_vs_iPSC.results.csv',
+		gfp_vs_rfp_file = 'GFP_vs_RFP.results.csv'
+	run:
+		if wildcards.comparison == 'GFP__not__IPSC':
+			shell("module load {config[R_version]}; \
+				cp ~/git/ipsc_rpe_atac/src/network_analysis.Rmd {params.folder}/network_analysis.Rmd; \
+				cp {params.gfp_vs_ipsc} {params.folder}/; \
+				Rscript -e \"rmarkdown::render('{params.folder}/network_analysis.Rmd', \
                       output_file = '{params.file}', \
-                      params = list(datafile = '../../{input}'))"
-		"""
+                      params = list(expression = {params.gfp_vs_ipsc_file}, datafile = '../../{input}'))\" ")
+		else:
+			shell("module load {config[R_version]}; \
+				cp ~/git/ipsc_rpe_atac/src/network_analysis.Rmd {params.folder}/network_analysis.Rmd; \
+				cp {params.gfp_vs_rfp} {params.folder}/; \
+				Rscript -e \"rmarkdown::render('{params.folder}/network_analysis.Rmd', \
+                      output_file = '{params.file}', \
+                      params = list(expression = {params.gfp_vs_rfp_file}, datafile = '../../{input}'))\" ")
 
 # compute read coverage across common  peaks 
 rule multiBamSummary:
