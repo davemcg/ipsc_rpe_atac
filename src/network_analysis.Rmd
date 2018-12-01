@@ -11,6 +11,8 @@ params:
     value: NA
   expression:
     value: NA
+  comparison:
+    value: NA
 
 ---
 
@@ -20,6 +22,7 @@ library(tidyverse)
 peak <- read_tsv(params$datafile, col_names = F)
 expression <- read_csv(params$expression)
 tf_gene <- read_csv('~/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line_with_Diff_Exp.tsv')
+comparison <- params$comparison
 
 colnames(peak) <- c('chrom','start','stop','type','macs2_score','strand','thickStart','thickStop','RGB','Distance_to_Gene','Gene','Description','chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
 
@@ -49,14 +52,14 @@ TF_gene_stats_list <- list()
 for (i in motifs){
   
   # ID differentially peak activity around genes for a TF
-  out <- grouped_stats[[i]] %>% select(-Total_TFBS_motifs) %>% 
+  out <- grouped_stats[[i]] %>% dplyr::select(-Total_TFBS_motifs) %>% 
     spread(type, Num_Peaks)
   out[is.na(out)] <- 0
   out <- out %>% 
-    mutate(ratio = GFP/iPSC, delta = GFP - iPSC) %>% 
+    mutate(ratio = GFP/!!as.name(comparison), delta = GFP - !!as.name(comparison)) %>% 
     arrange(-delta) %>% 
     left_join(expression %>% 
-                select(Gene, log2FoldChange, padj) %>% 
+                dplyr::select(Gene, log2FoldChange, padj) %>% 
                 unique()) %>% 
     filter(!is.na(padj), 
            abs(log2FoldChange) > 1, 
