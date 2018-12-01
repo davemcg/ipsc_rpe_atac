@@ -16,11 +16,11 @@ params:
 
 ---
 
-Datafile: `r echo(params$datafile)`
+Datafile: `r params$datafile`
 
-Differential Expression: `r echo(params$expression)`
+Differential Expression: `r params$expression`
 
-Comparison: `r echo(params$comparison)`
+Comparison: `r params$comparison`
 
 Network Analysis
 ```{r, echo=F, results = 'hide'}
