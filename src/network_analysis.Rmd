@@ -16,11 +16,11 @@ params:
 
 ---
 
-`r print(paste("Datafile: ", params$datafile))`
+Datafile: `r echo(params$datafile)`
 
-`r print(paste("Differential Expression: ", params$expression))`
+Differential Expression: `r echo(params$expression)`
 
-`r print(paste("Comparison: ", params$comparison))`
+Comparison: `r echo(params$comparison)`
 
 Network Analysis
 ```{r, echo=F, results = 'hide'}
