@@ -76,7 +76,7 @@ rule all:
 		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{motif}.union.HQ.pretty.bb', motif = config['motif_IDs']),
 		'/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_peaks.blackListed.narrowPeak.bb',
 		'/data/mcgaugheyd/datashare/hufnagel/hg19/interesting_homer_motif.bb',
-		expand('macs_peak/{comparison}_peaks.xls', comparison = config['peak_comparison_pair']),
+		expand('macs_peak/{comparison}_direct_peaks.xls', comparison = config['peak_comparison_pair']),
 		expand('network_reports/{comparison}_{peak_type}/{comparison}_{peak_type}_networkAnalysis.html', comparison = config['peak_comparison_pair'], peak_type = ['all','enhancers','promoters'])
 
 rule pull_lane_fastq_from_nisc:
@@ -265,18 +265,18 @@ rule peak_calling:
 # macs2
 rule peak_calling_comparator:
 	input:
-		t = lambda wildcards: expand('merged_bam_HQ/{sample}.q5.rmdup.bam', sample = TYPE_SAMPLE[wildcards.comparison.split('__not__')[0.upper()]]),
-		c = lambda wildcards: expand('merged_bam_HQ/{sample}.q5.rmdup.bam', sample = TYPE_SAMPLE[wildcards.comparison.split('__not__')[1.upper()]])
+		t = lambda wildcards: expand('merged_bam_HQ/{sample}.q5.rmdup.bam', sample = TYPE_SAMPLE[wildcards.comparison.split('__not__')[0].upper()]),
+		c = lambda wildcards: expand('merged_bam_HQ/{sample}.q5.rmdup.bam', sample = TYPE_SAMPLE[wildcards.comparison.split('__not__')[1].upper()])
 	output:
-		peaks = 'macs_peak/{comparison}_peaks.xls',
-		narrow_peaks = 'macs_peak/{comparison}_peaks.narrowPeak',
-		summits = 'macs_peak/{comparison}_summits.bed'
+		peaks = 'macs_peak/{comparison}_direct_peaks.xls',
+		narrow_peaks = 'macs_peak/{comparison}_direct_peaks.narrowPeak',
+		summits = 'macs_peak/{comparison}_direct_summits.bed'
 	shell:
 		"""
 		module load {config[macs2_version]}
 		macs2 callpeak -f BAMPE -g "hs" -t {input.t} -c {input.c} -q 0.01 \
 			--keep-dup all \
-			-n {wildcards.sample} \
+			-n {wildcards.comparison}_direct \
 			--outdir macs_peak
 		"""
 
@@ -914,15 +914,15 @@ rule TF_gene_network_R:
 				cp ~/git/ipsc_rpe_atac/src/network_analysis.Rmd {params.folder}/network_analysis.Rmd; \
 				cp {params.gfp_vs_ipsc} {params.folder}/; \
 				Rscript -e \"rmarkdown::render('{params.folder}/network_analysis.Rmd', \
-                      output_file = '{params.file}', \
-                      params = list(expression = {params.gfp_vs_ipsc_file}, datafile = '../../{input}'))\" ")
+					output_file = '{params.file}', output_dir = '{params.folder}', \
+					params = list(expression = '{params.gfp_vs_ipsc_file}', datafile = '../../{input}'))\")
 		else:
 			shell("module load {config[R_version]}; \
 				cp ~/git/ipsc_rpe_atac/src/network_analysis.Rmd {params.folder}/network_analysis.Rmd; \
 				cp {params.gfp_vs_rfp} {params.folder}/; \
 				Rscript -e \"rmarkdown::render('{params.folder}/network_analysis.Rmd', \
-                      output_file = '{params.file}', \
-                      params = list(expression = {params.gfp_vs_rfp_file}, datafile = '../../{input}'))\" ")
+					output_file = '{params.file}', output_dir = '{params.folder}', \
+					params = list(expression = '{params.gfp_vs_rfp_file}', datafile = '../../{input}'))")
 
 # compute read coverage across common  peaks 
 rule multiBamSummary:
