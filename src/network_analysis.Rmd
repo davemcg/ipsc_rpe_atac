@@ -1,7 +1,7 @@
 ---
 title: "Network Report"
 author: "David McGaughey"
-date: "11/27/2018"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
   html_document:
     theme: flatly
@@ -15,6 +15,12 @@ params:
     value: NA
 
 ---
+
+`r print(paste("Datafile: ", params$datafile))`
+
+`r print(paste("Differential Expression: ", params$expression))`
+
+`r print(paste("Comparison: ", params$comparison))`
 
 Network Analysis
 ```{r, echo=F, results = 'hide'}
