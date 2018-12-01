@@ -23,8 +23,8 @@ Differential Expression: `r params$expression`
 Comparison: `r params$comparison`
 
 Network Analysis
-```{r, echo=F, results = 'hide'}
-library(tidyverse)
+```{r, echo = T, results = 'hide', warning=F}
+library(tidyverse, warn.conflicts=F, quietly=T)
 peak <- read_tsv(params$datafile, col_names = F)
 expression <- read_csv(params$expression)
 tf_gene <- read_csv('~/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line_with_Diff_Exp.tsv')
@@ -99,6 +99,7 @@ TF_gene_stats %>% dplyr::select(motif = motif_core, Gene:padj, motif_full = moti
 ```{r}
 TF_gene_stats %>% group_by(motif_core) %>% summarise(count = n(), Gene = paste(Gene, collapse = ',') ) %>% arrange(-count) %>% DT::datatable()
 ```
+
 # Most common genes associated with TF
 ```{r}
 TF_gene_stats %>% group_by(Gene) %>% summarise(count = n(), motif = paste(motif_core, collapse=',')) %>% arrange(-count) %>%  DT::datatable( filter = list(position = 'top', clear = FALSE))
@@ -117,7 +118,7 @@ You can zoom in and out
 
 Clicking on a node gives you all the other nodes within 2 edges
 ```{r, fig.height=6, fig.width=6}
-library(visNetwork)
+library(visNetwork, warn.conflicts=F, quietly=T)
 TF_gene_stats_n <- TF_gene_stats %>% 
   # filter(!grepl('GATA', motif_core)) %>% 
   group_by(motif_core) %>% 
