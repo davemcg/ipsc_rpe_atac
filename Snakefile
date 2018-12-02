@@ -913,16 +913,12 @@ rule TF_gene_network_R:
 			shell("module load {config[R_version]}; \
 				cp ~/git/ipsc_rpe_atac/src/network_analysis.Rmd {params.folder}/network_analysis.Rmd; \
 				cp {params.gfp_vs_ipsc} {params.folder}/; \
-				Rscript -e \"rmarkdown::render('{params.folder}/network_analysis.Rmd', \
-					output_file = '{params.file}', output_dir = '{params.folder}', \
-					params = list(expression = '{params.gfp_vs_ipsc_file}', datafile = '../../{input}'))\")
+				Rscript -e \"rmarkdown::render('{params.folder}/network_analysis.Rmd', output_file = '{params.file}', output_dir = '{params.folder}', params = list(comparison = 'iPSC', expression = '{params.gfp_vs_ipsc_file}', datafile = '../../{input}'))\" ")
 		else:
 			shell("module load {config[R_version]}; \
 				cp ~/git/ipsc_rpe_atac/src/network_analysis.Rmd {params.folder}/network_analysis.Rmd; \
 				cp {params.gfp_vs_rfp} {params.folder}/; \
-				Rscript -e \"rmarkdown::render('{params.folder}/network_analysis.Rmd', \
-					output_file = '{params.file}', output_dir = '{params.folder}', \
-					params = list(expression = '{params.gfp_vs_rfp_file}', datafile = '../../{input}'))")
+				Rscript -e \"rmarkdown::render('{params.folder}/network_analysis.Rmd', output_file = '{params.file}', output_dir = '{params.folder}', params = list(comparison = 'RFP', expression = '{params.gfp_vs_rfp_file}', datafile = '../../{input}'))\" ")
 
 # compute read coverage across common  peaks 
 rule multiBamSummary:
