@@ -11,7 +11,9 @@ params:
     value: NA
   expression:
     value: NA
-  comparison:
+  comparison_1:
+    value: NA
+  comparison_2:
     value: NA
 
 ---
@@ -20,7 +22,7 @@ Datafile: `r params$datafile`
 
 Differential Expression: `r params$expression`
 
-Comparison: `r params$comparison`
+`r params$comparison_1` comparison_2 `r params$comparison_2`
 
 Network Analysis
 ```{r, echo = T, results = 'hide', warning=F}
@@ -28,7 +30,8 @@ library(tidyverse, warn.conflicts=F, quietly=T)
 peak <- read_tsv(params$datafile, col_names = F)
 expression <- read_csv(params$expression)
 tf_gene <- read_csv('~/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line_with_Diff_Exp.tsv')
-comparison <- params$comparison
+comparison_1 <- params$comparison_1
+comparison_2 <- params$comparison_2
 
 colnames(peak) <- c('chrom','start','stop','type','macs2_score','strand','thickStart','thickStop','RGB','Distance_to_Gene','Gene','Description','chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
 
@@ -62,7 +65,7 @@ for (i in motifs){
     spread(type, Num_Peaks)
   out[is.na(out)] <- 0
   out <- out %>% 
-    mutate(ratio = GFP/!!as.name(comparison), delta = GFP - !!as.name(comparison)) %>% 
+    mutate(ratio = !!as.name(comparison_1)/!!as.name(comparison_2), delta = !!as.name(comparison_1) - !!as.name(comparison_2)) %>% 
     arrange(-delta) %>% 
     left_join(expression %>% 
                 dplyr::select(Gene, log2FoldChange, padj) %>% 
@@ -106,7 +109,7 @@ TF_gene_stats %>% group_by(Gene) %>% summarise(count = n(), motif = paste(motif_
 ```
 
 # Network
-No more than 5 genes assigned to a single TF. Picking the top 5 genes by delta of GFP peaks - iPSC peaks, then breaking ties by taking the most differentially expressed by bulk RNA-seq RPE vs iPSC. 
+No more than 5 genes assigned to a single TF. Picking the top 5 genes by delta of `r params$comparison_1` peaks - `r params$comparison_2` peaks, then breaking ties by taking the most differentially expressed by bulk RNA-seq RPE vs iPSC. 
 
 Red are the homer ID'ed TF(BS)
 
