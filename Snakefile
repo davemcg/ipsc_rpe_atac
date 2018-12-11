@@ -36,7 +36,7 @@ for line in metadata:
 # and write file names for homer annotation for each motif
 def yank_all_motifs(wildcards):
 	import glob
-	path = 'homer_unique_peaks' + '_' + wildcards.peak_type + '/'
+	path = 'homer_unique_peaks_' + wildcards.comparison + '/' + wildcards.peak_type + '/'
 	known_motifs = glob.glob(path + 'knownResults/*motif')
 	novel_motifs = glob.glob(path + 'homerResults/*motif')
 	all_motifs = known_motifs + novel_motifs
@@ -66,17 +66,18 @@ wildcard_constraints:
 
 rule all:
 	input:
-		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}.bw', sample = list(SAMPLE_PATH.keys())),
-		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}_peaks.blackListed.hg19.narrowPeak.bb', sample = list(SAMPLE_PATH.keys())),
-		'deeptools/multiBamSummary.npz',
-		'deeptools/multiBamSummary.tsv',
-		'metrics/reads_by_sample.txt',
-		'fastqc/multiqc/multiqc_report.html',
-		expand('msCentipede/closest_TSS/{cell_type}.{motif}.closestTSS.dat.gz', cell_type = list(TYPE_SAMPLE.keys()), motif = config['motif_IDs']),
-		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{motif}.union.HQ.pretty.bb', motif = config['motif_IDs']),
-		'/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_peaks.blackListed.narrowPeak.bb',
-		'/data/mcgaugheyd/datashare/hufnagel/hg19/interesting_homer_motif.bb',
-		expand('macs_peak/{comparison}_direct_peaks.xls', comparison = config['peak_comparison_pair']),
+		#expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}.bw', sample = list(SAMPLE_PATH.keys())),
+		#expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}_peaks.blackListed.hg19.narrowPeak.bb', sample = list(SAMPLE_PATH.keys())),
+		#'deeptools/multiBamSummary.npz',
+		#'deeptools/multiBamSummary.tsv',
+		#'metrics/reads_by_sample.txt',
+		#'fastqc/multiqc/multiqc_report.html',
+		expand('downsample_bam/{sample}.q5.rmdup.ds.bam', sample = list(SAMPLE_PATH.keys())),
+		#expand('msCentipede/closest_TSS/{cell_type}.{motif}.closestTSS.dat.gz', cell_type = list(TYPE_SAMPLE.keys()), motif = config['motif_IDs']),
+		#expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{motif}.union.HQ.pretty.bb', motif = config['motif_IDs']),
+		#'/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_peaks.blackListed.narrowPeak.bb',
+		#'/data/mcgaugheyd/datashare/hufnagel/hg19/interesting_homer_motif.bb',
+		#expand('homer_unique_peaks_{comparison}/{peak_type}/homerResults.html', comparison = config['peak_comparison_pair'], peak_type = ['all','enhancers','promoters']), 
 		expand('network_reports/{comparison}_{peak_type}/{comparison}_{peak_type}_networkAnalysis.html', comparison = config['peak_comparison_pair'], peak_type = ['all','enhancers','promoters'])
 
 rule pull_lane_fastq_from_nisc:
@@ -90,19 +91,47 @@ rule pull_lane_fastq_from_nisc:
 			shell('echo ' + str(output))
 			shell(echo_command)
 			shell(command)
-		
+
+localrules: build_hg19	
+# define build custom hg19
+# the TYR enhancer is a MOUSE enhancer
+rule build_hg19:
+	input:
+		fa = config['bwa_genome']
+	output:
+		'/data/mcgaugheyd/genomes/hg19/hg19_bharti_TYR_enhancer.fa'
+	shell:
+		"""
+		module load {config[samtools_version]}
+		cat {input.fa} ~/git/ipsc_rpe_atac/data/mouse_tyr_enhancer.fa > {output}
+		samtools faidx {output}
+		"""
+
+# build the custom bwa index
+rule build_bwa_index:
+	input:
+		'/data/mcgaugheyd/genomes/hg19/hg19_bharti_TYR_enhancer.fa'
+	output:
+		'/data/mcgaugheyd/genomes/hg19/hg19_bharti_TYR_enhancer.fa.bwt'
+	shell:
+		"""
+		module load {config[bwa_version]}
+		bwa index {input}
+		"""
 
 # fastq to bwa for alignment
 rule align:
 	input:
-		expand('fastq/{{lane_sample}}{pair}.fastq.gz', pair = ['_R1_001', '_R2_001']) 
+		fa = expand('fastq/{{lane_sample}}{pair}.fastq.gz', pair = ['_R1_001', '_R2_001']),
+		bwa_genome = '/data/mcgaugheyd/genomes/hg19/hg19_bharti_TYR_enhancer.fa',
+		bwa_index = '/data/mcgaugheyd/genomes/hg19/hg19_bharti_TYR_enhancer.fa.bwt'
 	output:
 		temp('realigned/{lane_sample}.bam')
 	threads: 12 
 	shell:
 		"""
 		module load {config[bwa_version]}
-		bwa mem -t {threads} -B 4 -O 6 -E 1 -M {config[bwa_genome]} {input} | \
+		bwa mem -t {threads} -B 4 -O 6 -E 1 -M {input.bwa_genome} {input.fa} | \
 			samtools view -1 - > \
 			{output}
 		"""
@@ -710,7 +739,7 @@ rule find_closest_TSS_to_all_common:
 	shell:
 		"""
 		module load {config[bedtools_version]}
-		cat {input.bed} | \
+		cat {input.bed} | grep -v mm10 | \
 			sort -k1,1 -k2,2n | \
 					closestBed -g <( sort -k1,1 -k2,2n {config[bwa_genome_sizes]} ) \
 						-k 10 -d -a - -b <( sort -k1,1 -k2,2n {input.tss} ) | \
@@ -764,6 +793,46 @@ rule find_closest_TSS_against_unique_peaks:
 			gzip -f > {output}
 		"""
 
+localrules: prep_direct_summits_for_homer
+# prep summits for homer
+# remove in ENCODE black list regions
+# h3k27ac overlap with smith frazer data
+# split on tss / peak type
+rule prep_direct_summits_for_homer:
+	input:
+		summits = 'macs_peak/{comparison}_direct_summits.bed',
+		peaks = 'macs_peak/{comparison}_direct_peaks.narrowPeak',
+		blackList = '/data/mcgaugheyd/genomes/hg19/ENCFF001TDO.bed.gz', 
+		rpe1 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_1.bed.gz',
+		rpe2 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_2.bed.gz',
+		rpe3 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_3.bed.gz',
+		rpe4 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_4.bed.gz',
+		rpe5 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_5.bed.gz',
+		rpe6 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_6.bed.gz',
+		rpe7 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_7.bed.gz',
+		rpe8 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_8.bed.gz',
+		rpe9 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_9.bed.gz',
+		ips1 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ENCFF111WIP.bed.gz',
+		ips2 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ENCFF369AMU.bed.gz',
+		ips3 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ENCFF680AQK.bed.gz',
+	output:
+		peaks = 'macs_peak/{comparison}_direct.h3k27ac_intersect.blackListed.peaks.bed',
+		summits = 'macs_peak/{comparison}_direct.h3k27ac_intersect.blackListed.summits.bed'
+	shell:
+		"""
+		module load {config[bedtools_version]}
+		# awk removes peaks with less than 1.8 fold enrichment over background
+		# first intersect removes in blacklist
+		# second intersect (big one) only keeps overlaps with 3 or more smith frazer h3k27ac 
+		# third intersect keeps summits that overlap peaks that survive the first two intersects above
+		awk '$7>1.8 {{print $0}}' {input.peaks} | \
+			bedtools intersect -a - -b {input.blackList} -v | \
+			bedtools intersect -a - -b <(zcat {input.rpe1} {input.rpe2} {input.rpe3} \
+				{input.rpe4} {input.rpe5} {input.rpe6} {input.rpe7} {input.rpe8} {input.rpe9} | sort -k1,1 -k2,2n) -c | \
+				 awk '$11>2 {{print $0}}' - > {output.peaks} 
+		bedtools intersect -a {input.summits} -b {output.peaks} > {output.summits}
+		"""	
+
 # run homer on unique_peaks
 rule homer_find_motifs_unique_peaks:
 	input:
@@ -788,7 +857,7 @@ rule homer_find_motifs_unique_peaks:
 			shell("module load {config[homer_version]}; \
 					findMotifsGenome.pl <(awk '$4>99 {{print $0}}' {input.peak} | intersectBed -a - -b {input.tss} ) hg19 {params.out_dir} -p {threads} -size 100 -preparsedDir homer_preparsed/")
 
-
+localrules: homer_annotate_peaks
 # label unique_peaks with motifs that homer finds
 rule homer_annotate_peaks:
 	input:
@@ -800,11 +869,12 @@ rule homer_annotate_peaks:
 		peak_bed = 'homer_unique_peaks_{comparison}/{peak_type}/peak_info/{homer_motif}.DELETE_LATER.xls'
 	run:
 		import glob
-		motif_path = glob.glob(str(input.homer_known).split('/')[0] + '/*/' + wildcards.homer_motif)[0]
+		motif_path = glob.glob(str(input.homer_known).split('/')[0] + '/' + wildcards.peak_type + '/*/' + wildcards.homer_motif)[0]
 		shell_call = 'module load {config[homer_version]}; \
 						annotatePeaks.pl {input.peak_file} hg19 -mbed {output.motif_bed} -m ' + \
 						motif_path + \
 						' > {output.peak_bed}'
+		print(shell_call)
 		shell(shell_call)
 
 # label homer ID'ed TF with differential RNA-seq expression
@@ -913,12 +983,17 @@ rule TF_gene_network_R:
 			shell("module load {config[R_version]}; \
 				cp ~/git/ipsc_rpe_atac/src/network_analysis.Rmd {params.folder}/network_analysis.Rmd; \
 				cp {params.gfp_vs_ipsc} {params.folder}/; \
-				Rscript -e \"rmarkdown::render('{params.folder}/network_analysis.Rmd', output_file = '{params.file}', output_dir = '{params.folder}', params = list(comparison = 'iPSC', expression = '{params.gfp_vs_ipsc_file}', datafile = '../../{input}'))\" ")
-		else:
+				Rscript -e \"rmarkdown::render('{params.folder}/network_analysis.Rmd', output_file = '{params.file}', output_dir = '{params.folder}', params = list(comparison_1 = 'GFP', comparison_2 = 'iPSC', expression = '{params.gfp_vs_ipsc_file}', datafile = '../../{input}'))\" ")
+		elif wildcards.comparison == 'GFP__not__RFP':
 			shell("module load {config[R_version]}; \
 				cp ~/git/ipsc_rpe_atac/src/network_analysis.Rmd {params.folder}/network_analysis.Rmd; \
 				cp {params.gfp_vs_rfp} {params.folder}/; \
-				Rscript -e \"rmarkdown::render('{params.folder}/network_analysis.Rmd', output_file = '{params.file}', output_dir = '{params.folder}', params = list(comparison = 'RFP', expression = '{params.gfp_vs_rfp_file}', datafile = '../../{input}'))\" ")
+				Rscript -e \"rmarkdown::render('{params.folder}/network_analysis.Rmd', output_file = '{params.file}', output_dir = '{params.folder}', params = list(comparison_1 = 'GFP', comparison_2 = 'RFP', expression = '{params.gfp_vs_rfp_file}', datafile = '../../{input}'))\" ")
+		elif wildcards.comparison == 'RFP__not__GFP':
+			shell("module load {config[R_version]}; \
+				cp ~/git/ipsc_rpe_atac/src/network_analysis.Rmd {params.folder}/network_analysis.Rmd; \
+				cp {params.gfp_vs_rfp} {params.folder}/; \
+				Rscript -e \"rmarkdown::render('{params.folder}/network_analysis.Rmd', output_file = '{params.file}', output_dir = '{params.folder}', params = list(comparison_1 = 'RFP', comparison_2 = 'GFP', expression = '{params.gfp_vs_rfp_file}', datafile = '../../{input}'))\" ")
 
 # compute read coverage across common  peaks 
 rule multiBamSummary:
