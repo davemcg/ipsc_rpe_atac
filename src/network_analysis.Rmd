@@ -22,7 +22,7 @@ Datafile: `r params$datafile`
 
 Differential Expression: `r params$expression`
 
-`r params$comparison_1` comparison_2 `r params$comparison_2`
+`r params$comparison_1` against `r params$comparison_2`
 
 Network Analysis
 ```{r, echo = T, results = 'hide', warning=F}
@@ -108,6 +108,7 @@ TF_gene_stats %>% group_by(motif_core) %>% summarise(count = n(), Gene = paste(G
 TF_gene_stats %>% group_by(Gene) %>% summarise(count = n(), motif = paste(motif_core, collapse=',')) %>% arrange(-count) %>%  DT::datatable( filter = list(position = 'top', clear = FALSE))
 ```
 
+
 # Network
 No more than 5 genes assigned to a single TF. Picking the top 5 genes by delta of `r params$comparison_1` peaks - `r params$comparison_2` peaks, then breaking ties by taking the most differentially expressed by bulk RNA-seq RPE vs iPSC. 
 
@@ -175,4 +176,62 @@ visNetwork(nodes, edges, height = "700px", width = "100%") %>%
   visEdges(smooth = FALSE) %>% 
   visInteraction(navigationButtons = TRUE)
 ```
+
+# GO Term Enrichment of Gene List
+```{r, echo = T, warning=F, message = F}
+ids <- clusterProfiler::bitr(expression$Gene, fromType="SYMBOL", toType=c("UNIPROT", "ENSEMBL", "ENTREZID"), OrgDb="org.Hs.eg.db")
+
+set <- clusterProfiler::bitr(TF_gene_stats$Gene %>% unique(),
+            fromType="SYMBOL",
+            toType="ENTREZID",
+            OrgDb = "org.Hs.eg.db")
+
+
+
+
+ego_bp <- clusterProfiler::enrichGO(gene          = set$ENTREZID,
+                   universe      = ids$ENTREZID %>% unique(),
+                   OrgDb         = org.Hs.eg.db,
+                   ont           = "BP",
+                   pool = TRUE,
+                   pAdjustMethod = "BH",
+                   pvalueCutoff = 0.1,
+                   qvalueCutoff = 0.1,
+                   keyType = 'ENTREZID',
+                   readable      = TRUE)
+
+ego2_bp <- clusterProfiler::simplify(ego_bp, cutoff=0.7, by="p.adjust", select_fun=min)
+
+ego_mf <- clusterProfiler::enrichGO(gene          = set$ENTREZID,
+                   universe      = ids$ENTREZID %>% unique(),
+                   OrgDb         = org.Hs.eg.db,
+                   ont           = "MF",
+                   pool = TRUE,
+                   pAdjustMethod = "BH",
+                   qvalueCutoff = 0.1,
+                   keyType = 'ENTREZID',
+                   readable      = TRUE)
+
+ego2_mf <- clusterProfiler::simplify(ego_mf, cutoff=0.7, by="p.adjust", select_fun=min)
+
+ego2_bp_out <- ego2_bp %>% data.frame() %>%  mutate(geneID = gsub('/', '<br>', geneID)) %>%  mutate_at(.vars=vars(pvalue,p.adjust,qvalue), .funs=funs(formatC(., format = "e", digits = 2))) 
+
+ego2_mf_out <- ego2_mf %>% data.frame() %>%  mutate(geneID = gsub('/', '<br>', geneID)) %>%  mutate_at(.vars=vars(pvalue,p.adjust,qvalue), .funs=funs(formatC(., format = "e", digits = 2)))
+
+bind_rows(ego2_bp_out %>% mutate(ONT = 'BP'), ego2_mf_out %>% mutate(ONT = 'MF')) %>% arrange(pvalue) %>% DT::datatable(rownames = FALSE, escape = FALSE)
+```
+
+# KEGG Pathway Enrichment
+```{r, fig.width=5}
+kegg <- clusterProfiler::enrichKEGG(gene         = set$ENTREZID,
+                   organism     = 'hsa', 
+                   pvalueCutoff = 1)
+kegg <- DOSE::setReadable(kegg,  OrgDb = org.Hs.eg.db, keytype = 'ENTREZID')
+
+kegg %>% data.frame() %>%  
+  mutate(geneID = gsub('/', '<br>', geneID)) %>%  
+  mutate_at(.vars=vars(pvalue,p.adjust,qvalue), .funs=funs(formatC(., format = "e", digits = 2))) %>% 
+  DT::datatable(rownames = FALSE, escape = FALSE) 
+
+kegg %>% data.frame() %>% mutate(Terms = paste(ID, Description)) %>% head(10) %>% mutate(Terms =factor(Terms, levels = Terms %>% rev())) %>%  ggplot(aes(x=Terms, y= -log10(pvalue))) + geom_bar(stat='identity') + theme_minimal() + coord_flip() + xlab('-log10(p value')
 
