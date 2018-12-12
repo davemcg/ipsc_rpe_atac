@@ -127,9 +127,9 @@ TF_gene_stats_n <- TF_gene_stats %>%
   # filter(!grepl('GATA', motif_core)) %>% 
   group_by(motif_core) %>% 
   filter(delta > 2) %>% 
-  top_n(5, delta) %>% # no more than n by tF 
+ # top_n(5, delta) %>% # no more than n by tF 
   mutate(`(abs)log2FC` = abs(log2FoldChange)) %>% 
-  top_n(5,`(abs)log2FC`) %>% 
+  #top_n(5,`(abs)log2FC`) %>% 
   #filter(!Gene %in% c('FZD8','OPCML','PFKP','NRIP1','TSHZ3', 'SOX6')) %>% # trimming out most common genes between TF
   ungroup()
 
@@ -146,12 +146,12 @@ expression_TF <- left_join(expression, tf_gene, by = 'Gene')
 nodes <- full_join(TF, genes, by = "label") %>%  
   arrange(label) %>% rowid_to_column("id") %>% 
   mutate(group = case_when(label %in% TF$label ~ 'TF', 
-                           TRUE ~ 'Gene'),
-         shape = 'box') %>% 
+                           TRUE ~ 'Gene')) %>% 
   left_join(., expression_TF %>% 
               select(Gene, value = log2FoldChange, goTF = TF) %>% 
               unique(), by = c("label" = "Gene")) %>% 
   mutate(title = paste0('Gene: ', label, '<br>log2FC: ', round(value,2))) %>% 
+  mutate(value = 10 ** value) %>% 
   mutate(group = case_when(group == 'TF' ~ 'TF',
                            goTF == 'Yes' ~ 'goTF',
                            TRUE ~ 'Gene'))
