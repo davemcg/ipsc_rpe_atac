@@ -28,12 +28,11 @@ Differential Expression: `r params$expression`
 library(tidyverse)
 #peak <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/peak_full/homer_GFP__not__IPSC/all/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz')
 expression <- read_csv('~/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line_with_Diff_Exp.tsv')
-cgm_gfp <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/GFP_common_peaks.blackListed.narrowPeak.CGM.tsv') %>% group_by(ENSGene_Name) %>% slice(1) %>% ungroup()
-cgm_ipsc <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/IPSC_common_peaks.blackListed.narrowPeak.CGM.tsv') %>% group_by(ENSGene_Name) %>% slice(1) %>% ungroup()
-cgm_rfp <-  read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/RFP_common_peaks.blackListed.narrowPeak.CGM.tsv') %>% group_by(ENSGene_Name) %>% slice(1) %>% ungroup()
+cgm_gfp <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/GFP_common_peaks.blackListed.narrowPeak.CGM.tsv') 
+cgm_ipsc <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/IPSC_common_peaks.blackListed.narrowPeak.CGM.tsv')
+cgm_rfp <-  read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/RFP_common_peaks.blackListed.narrowPeak.CGM.tsv') 
 
-
-delta_cgm <- (cgm_gfp %>% select(Exon_Count:`-1e6`)) - (cgm_ipsc %>% select(Exon_Count:`-1e6`))
+delta_cgm <- (cgm_gfp %>% select(Exon_Count:Gene_length)) - (cgm_ipsc %>% select(Exon_Count:Gene_length))
 delta_cgm$Gene_Name = cgm_gfp$Gene_Name
 
 x <- delta_cgm %>% left_join(expression %>% filter(Line == 'GFP'), by = c('Gene_Name' = 'Gene'))
@@ -49,20 +48,13 @@ fitControl <- trainControl(## 10-fold CV
                            number = 10,
                            ## repeated ten times
                            repeats = 10)
-bayesglm <- train(log2FoldChange__RPE_vs_iPSC ~ ., data = train %>% select(Exon_Count:`-1e6`, log2FoldChange__RPE_vs_iPSC), 
+
+bayesglm <- train(log2FoldChange__RPE_vs_iPSC ~ ., data = train %>% select(Exon_Count:Gene_length, log2FoldChange__RPE_vs_iPSC), 
                  method = "bayesglm")
 
-bridge <- train(log2FoldChange__RPE_vs_iPSC ~ ., data = train  %>% select(Exon_Count:`-1e6`, log2FoldChange__RPE_vs_iPSC), 
-                 method = "bridge")
+lm <- train(y = cgm_gfp %>% left_join(., expression %>% filter(Line == 'GFP'), by = c('Gene_Name' = 'Gene')) %>% filter(abs(lsTPM) > 0) %>% pull(lsTPM), x = cgm_gfp  %>% left_join(., expression %>% filter(Line == 'GFP'), by = c('Gene_Name' = 'Gene')) %>% filter(abs(lsTPM) > 0) %>% select(Exon_Count:Gene_length), 
+                 method = "lm", preProcess = c('center','scale'))
 
-gamboost <-  train(log2FoldChange__RPE_vs_iPSC ~ ., data = train %>% select(Exon_Count:`-1e6`, log2FoldChange__RPE_vs_iPSC), 
-                 method = "gamboost")
-
-foba <-  train(log2FoldChange__RPE_vs_iPSC ~ ., data = train  %>% select(Exon_Count:`-1e6`, log2FoldChange__RPE_vs_iPSC), 
-                 method = "foba")
-
-brnn <-  train(log2FoldChange__RPE_vs_iPSC ~ ., data = train %>% select(Exon_Count:`-1e6`, log2FoldChange__RPE_vs_iPSC), 
-                 method = "brnn")
 ```
 
 
