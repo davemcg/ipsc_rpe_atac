@@ -28,12 +28,23 @@ Differential Expression: `r params$expression`
 library(tidyverse)
 #peak <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/peak_full/homer_GFP__not__IPSC/all/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz')
 expression <- read_csv('~/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line_with_Diff_Exp.tsv')
-cgm_gfp <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/GFP_common_peaks.blackListed.narrowPeak.CGM.tsv') 
-cgm_ipsc <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/IPSC_common_peaks.blackListed.narrowPeak.CGM.tsv')
-cgm_rfp <-  read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/RFP_common_peaks.blackListed.narrowPeak.CGM.tsv') 
+cgm_gfp <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/GFP_common_peaks.blackListed.narrowPeak.CGM.tsv') %>% 
+  left_join(. , expression %>% filter(Line == 'GFP') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
+cgm_ipsc <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/IPSC_common_peaks.blackListed.narrowPeak.CGM.tsv') %>% 
+  left_join(. , expression %>% filter(Line == 'iPSC') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
+cgm_rfp <-  read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/RFP_common_peaks.blackListed.narrowPeak.CGM.tsv')  %>% 
+  left_join(. , expression %>% filter(Line == 'RFP') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
 
-delta_cgm <- (cgm_gfp %>% select(Exon_Count:Gene_length)) - (cgm_ipsc %>% select(Exon_Count:Gene_length))
+delta_cgm <- (cgm_gfp %>% mutate(lTPM = log2(lsTPM+1)) %>%  select(Exon_Count:Gene_length, lTPM)) - (cgm_ipsc %>% mutate(lTPM = log2(lsTPM+1)) %>% select(Exon_Count:Gene_length, lTPM)) %>% as.tibble()
 delta_cgm$Gene_Name = cgm_gfp$Gene_Name
+
+
+
+delta_cgm %>% mutate(center = `5000` + `1000` + `-1000` + `-5000`) %>% filter(!is.na(lTPM)) %>% group_by(center) %>% summarise(lTPM = mean(lTPM))
+
+
+
+
 
 x <- delta_cgm %>% left_join(expression %>% filter(Line == 'GFP'), by = c('Gene_Name' = 'Gene'))
 
