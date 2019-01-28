@@ -37,34 +37,9 @@ cgm_rfp <-  read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/
 
 delta_cgm <- (cgm_gfp %>% mutate(lTPM = log2(lsTPM+1)) %>%  select(Exon_Count:Gene_length, lTPM)) - (cgm_ipsc %>% mutate(lTPM = log2(lsTPM+1)) %>% select(Exon_Count:Gene_length, lTPM)) %>% as.tibble()
 delta_cgm$Gene_Name = cgm_gfp$Gene_Name
+delta_cgm$var <- apply(delta_cgm %>% select(Exon_Count:`-1e6`), 1, var)
 
-
-
-delta_cgm %>% mutate(center = `5000` + `1000` + `-1000` + `-5000`) %>% filter(!is.na(lTPM)) %>% group_by(center) %>% summarise(lTPM = mean(lTPM))
-
-
-
-
-
-x <- delta_cgm %>% left_join(expression %>% filter(Line == 'GFP'), by = c('Gene_Name' = 'Gene'))
-
-
-set.seed(153490)
-train <- x %>% sample_n(10000) %>% filter(log2FoldChange__RPE_vs_iPSC > 0)
-test <- x %>% filter(!Gene_Name %in% train$Gene_Name) %>% filter(log2FoldChange__RPE_vs_iPSC > 0)
-
-library(caret)
-fitControl <- trainControl(## 10-fold CV
-                           method = "repeatedcv",
-                           number = 10,
-                           ## repeated ten times
-                           repeats = 10)
-
-bayesglm <- train(log2FoldChange__RPE_vs_iPSC ~ ., data = train %>% select(Exon_Count:Gene_length, log2FoldChange__RPE_vs_iPSC), 
-                 method = "bayesglm")
-
-lm <- train(y = cgm_gfp %>% left_join(., expression %>% filter(Line == 'GFP'), by = c('Gene_Name' = 'Gene')) %>% filter(abs(lsTPM) > 0) %>% pull(lsTPM), x = cgm_gfp  %>% left_join(., expression %>% filter(Line == 'GFP'), by = c('Gene_Name' = 'Gene')) %>% filter(abs(lsTPM) > 0) %>% select(Exon_Count:Gene_length), 
-                 method = "lm", preProcess = c('center','scale'))
+delta_cgm %>% filter(Gene_Name == 'ABCA4')
 
 ```
 
