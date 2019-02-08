@@ -9,10 +9,10 @@ output:
 ---
 
 # Identifying genes with the following characteristics:
-  - 2 or more sum ATAC-peaks in GFP versus iPSC in the 1000bp and 5000bp upstream windows
-  - Changes in RNA expression between GFP and iPSC of abs(log2(TPM+1)) > 2
+- 2 or more sum ATAC-peaks in GFP versus iPSC in the 1000bp and 5000bp upstream windows
+- Changes in RNA expression between GFP and iPSC of abs(log2(TPM+1)) > 2
 
-```{r, fig.height=3.3, fig.width=4}
+```{r, fig.height=3.3, fig.width=4, warning = F , message = F}
 library(tidyverse)
 library(ComplexHeatmap)
 library(viridis)
@@ -20,34 +20,60 @@ library(circlize)
 library(annotables)
 #peak <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/peak_full/homer_GFP__not__IPSC/all/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz')
 expression <- read_csv('~/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line_with_Diff_Exp.tsv')
-cgm_gfp <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/GFP_common_peaks.blackListed.narrowPeak.CGM.tsv') %>% 
-  left_join(. , expression %>% filter(Line == 'GFP') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
-cgm_ipsc <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/IPSC_common_peaks.blackListed.narrowPeak.CGM.tsv') %>% 
+
+# iPSC
+cgm_ipsc_value <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/IPSC_ATAC-Seq_common_peaks.blackListed.narrowPeak.CGM_score.tsv') %>% 
   left_join(. , expression %>% filter(Line == 'iPSC') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
-cgm_rfp <-  read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/RFP_common_peaks.blackListed.narrowPeak.CGM.tsv')  %>% 
+cgm_ipsc_score <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/IPSC_ATAC-Seq_common_peaks.blackListed.narrowPeak.CGM_score.tsv') %>% 
+  left_join(. , expression %>% filter(Line == 'iPSC') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
+
+# GFP
+cgm_gfp_value <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/GFP_ATAC-Seq_common_peaks.blackListed.narrowPeak.CGM_score.tsv') %>% 
+  left_join(. , expression %>% filter(Line == 'GFP') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
+cgm_gfp_score <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/GFP_ATAC-Seq_common_peaks.blackListed.narrowPeak.CGM_score.tsv') %>% 
+  left_join(. , expression %>% filter(Line == 'GFP') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
+cgm_gfp_h3k27ac_Value <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/GFP_ATAC-Seq_common_peaks.h3k27ac_intersect.blackListed.narrowPeak.CGM_score.tsv') %>% 
+  left_join(. , expression %>% filter(Line == 'GFP') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
+cgm_gfp_h3k27ac_score <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/GFP_ATAC-Seq_common_peaks.h3k27ac_intersect.blackListed.narrowPeak.CGM_score.tsv') %>% 
+  left_join(. , expression %>% filter(Line == 'GFP') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
+
+# RFP
+cgm_rfp_value <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/RFP_ATAC-Seq_common_peaks.blackListed.narrowPeak.CGM_score.tsv') %>% 
+  left_join(. , expression %>% filter(Line == 'RFP') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
+cgm_rfp_score <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/RFP_ATAC-Seq_common_peaks.blackListed.narrowPeak.CGM_score.tsv') %>% 
+  left_join(. , expression %>% filter(Line == 'RFP') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
+cgm_rfp_h3k27ac_Value <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/RFP_ATAC-Seq_common_peaks.h3k27ac_intersect.blackListed.narrowPeak.CGM_score.tsv') %>% 
+  left_join(. , expression %>% filter(Line == 'RFP') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
+cgm_rfp_h3k27ac_score <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/RFP_ATAC-Seq_common_peaks.h3k27ac_intersect.blackListed.narrowPeak.CGM_score.tsv') %>% 
   left_join(. , expression %>% filter(Line == 'RFP') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
 ```
 
 iPSC -> GFP
-```{r, fig.height=3.3, fig.width=4}
-delta_cgm <- (cgm_gfp %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Count:Gene_length, `log2(TPM+1)`)) - (cgm_ipsc %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Count:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
+
+Not using the h3k27ac intersection, as the iPSC h3k27ac ChIP-seq samples I found had horrific (near zero) overlap with our iPSC ATAC data.
+```{r, fig.height=11, fig.width=4}
+delta_cgm <- (cgm_gfp_score %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
+  (cgm_ipsc_score %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Value:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
 delta_cgm$Gene_Name = cgm_gfp$Gene_Name
-#delta_cgm$var <- apply(delta_cgm %>% select(Exon_Count:`-1e6`), 1, var)
+#delta_cgm$var <- apply(delta_cgm %>% select(Exon_Value:`-1e6`), 1, var)
 
 punctate_upstream <- delta_cgm %>% mutate(`5k_upstream` = `5000` + `1000`) %>% 
-  filter(`5k_upstream` > 1, abs(`log2(TPM+1)`) > 1) %>% unique()
+  filter(`5k_upstream` > 150, abs(`log2(TPM+1)`) > 1) %>% unique() %>% 
+  arrange(`log2(TPM+1)`) 
 punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = c("Gene_Name" = "symbol")) %>% 
-  select(Gene_Name, description, `log2(TPM+1)`, Exon_Count:`-1e6`) %>% unique() %>% 
+  select(Gene_Name, description, `log2(TPM+1)`, Exon_Value:`-1e6`) %>% unique() %>% 
+  arrange(`log2(TPM+1)`) %>% 
   DT::datatable()
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
 punctate_upstream <- punctate_upstream %>% select(`1e6`:`-1e6`, `log2(TPM+1)`)
 atac_heatmap <- punctate_upstream %>% select(-`log2(TPM+1)`) %>% 
-  Heatmap(col = colorRamp2(c(-4, 0, 4), viridis(3)),
+  Heatmap(col = colorRamp2(c(-200, 0, 200), viridis(3)),
           cluster_columns = F,
-          name = 'Number of Peaks in Window GFP <-> iPSC',
+          cluster_rows = F,
+          name = 'Peak Score in Window GFP - iPSC',
           show_row_names = F)
 expression_heatmap <- punctate_upstream %>% select(`log2(TPM+1)`) %>% 
-  Heatmap(col = colorRamp2(c(-4, 0, 4), magma(3)),
+  Heatmap(col = colorRamp2(c(-100, 0, 100), magma(3)),
           cluster_columns = F,
           name = 'log2(TPM+1) Delta GFP <-> iPSC')
 atac_heatmap + expression_heatmap
@@ -55,166 +81,191 @@ atac_heatmap + expression_heatmap
 
 
 # Modified approach from `trends.Rmd` where the filtering is based upon evaluating three settings:
-  - Within 5000bp
-  - Within 100,000bp
-  - Entire region, -1e6 to +1e6
+- Within 5000bp
+- Within 100,000bp
+- Entire region, -1e6 to +1e6
 
-More peaks, more expression RFP -> GFP
-```{r, fig.height=7, fig.width=4}
-delta_cgm <- (cgm_gfp %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Count:Gene_length, `log2(TPM+1)`)) - (cgm_rfp %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Count:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
+# More peaks, more expression RFP -> GFP
+**WITH h3k27ac Intersection**
+```{r, fig.height=12, fig.width=4}
+delta_cgm <- (cgm_gfp_h3k27ac_Value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
+             (cgm_rfp_h3k27ac_Value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Value:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
 delta_cgm$Gene_Name = cgm_gfp$Gene_Name
-#delta_cgm$var <- apply(delta_cgm %>% select(Exon_Count:`-1e6`), 1, var)
+#delta_cgm$var <- apply(delta_cgm %>% select(Exon_Value:`-1e6`), 1, var)
 
 delta_cgm <- delta_cgm %>% mutate(Promoter = `5000` + `1000`,
                                   Upstream100K = `1000` + `5000` + `1e4` + `5e4` + `1e5`) %>% 
   unique()
-delta_cgm %>% select(Exon_Count:`-1e6`) %>% rowSums(na.rm=TRUE) -> delta_cgm$All
+delta_cgm %>% select(Exon_Value:`-1e6`) %>% rowSums(na.rm=TRUE) -> delta_cgm$All
 
 
 punctate_upstream <- delta_cgm %>% 
-   filter(`log2(TPM+1)` > 1) %>% filter(Promoter > 1 | Upstream100K > 1 | All > 1)
+  filter(`log2(TPM+1)` > 0.5) %>% filter(Promoter > 50 | Upstream100K > 50 | All > 50) %>% 
+  arrange(`log2(TPM+1)`)
 punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = c("Gene_Name" = "symbol")) %>% 
-  select(Gene_Name, description, `log2(TPM+1)`, Promoter, Upstream100K, All, Exon_Count:`-1e6`) %>% 
+  select(Gene_Name, description, `log2(TPM+1)`, Promoter, Upstream100K, All, Exon_Value:`-1e6`) %>% 
   DT::datatable()
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
 punctate_upstream <- punctate_upstream %>% select(`1e6`:`-1e6`, `log2(TPM+1)`, Promoter, Upstream100K, All)
 atac_heatmap <- punctate_upstream %>% select(-`log2(TPM+1)`, -Promoter, -Upstream100K, -All) %>% 
-  Heatmap(col = colorRamp2(c(-4, 0, 4), viridis(3)),
+  Heatmap(col = colorRamp2(c(-100, 0, 100), viridis(3)),
           cluster_columns = F,
-          name = 'Number of Peaks in Window GFP <-> iPSC',
+          name = 'Peaks Score in Window GFP - RFP',
+          cluster_rows = F,
           show_row_names = F)
 
 region_heatmap <- punctate_upstream %>% select(Promoter, Upstream100K, All) %>% 
-  Heatmap(col = colorRamp2(c(-3, 0, 3), viridis(3)),
+  Heatmap(col = colorRamp2(c(-100, 0, 100), viridis(3)),
           cluster_columns = F,
-          name = 'Aggregation ATAC Peaks GFP <-> RFP',
+          name = 'Aggregation Peak Score GFP - RFP',
           show_row_names = F,
+          cluster_rows = F,
           show_heatmap_legend = F)
 
 expression_heatmap <- punctate_upstream %>% select(`log2(TPM+1)`) %>% 
   Heatmap(col = colorRamp2(c(-2, 0, 2), magma(3)),
           cluster_columns = F,
-          name = 'log2(TPM+1) Delta GFP <-> RFP')
+          cluster_rows = F,
+          name = 'log2(TPM+1) Delta GFP - RFP')
 atac_heatmap + region_heatmap + expression_heatmap
 
 ```
 
-More peaks, less expression RFP -> GFP
-```{r, fig.height=7, fig.width=4}
-delta_cgm <- (cgm_gfp %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Count:Gene_length, `log2(TPM+1)`)) - (cgm_rfp %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Count:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
+# More peaks, less expression RFP -> GFP
+Notice how there are fewer (about 75 instead of 150)...which is good, as ATAC + h3k27Ac is a canonical "activation" signal
+```{r, fig.height=6, fig.width=4}
+delta_cgm <- (cgm_gfp_h3k27ac_Value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
+             (cgm_rfp_h3k27ac_Value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Value:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
 delta_cgm$Gene_Name = cgm_gfp$Gene_Name
-#delta_cgm$var <- apply(delta_cgm %>% select(Exon_Count:`-1e6`), 1, var)
+#delta_cgm$var <- apply(delta_cgm %>% select(Exon_Value:`-1e6`), 1, var)
 
 delta_cgm <- delta_cgm %>% mutate(Promoter = `5000` + `1000`,
                                   Upstream100K = `1000` + `5000` + `1e4` + `5e4` + `1e5`) %>% 
   unique()
-delta_cgm %>% select(Exon_Count:`-1e6`) %>% rowSums(na.rm=TRUE) -> delta_cgm$All
+delta_cgm %>% select(Exon_Value:`-1e6`) %>% rowSums(na.rm=TRUE) -> delta_cgm$All
 
 
 punctate_upstream <- delta_cgm %>% 
-   filter(`log2(TPM+1)` < -1) %>% filter(Promoter > 1 | Upstream100K > 1 | All > 1)
+  filter(`log2(TPM+1)` < -0.5) %>% filter(Promoter > 50 | Upstream100K > 50 | All > 50) %>% 
+  arrange(`log2(TPM+1)`)
 punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = c("Gene_Name" = "symbol")) %>% 
-  select(Gene_Name, description, `log2(TPM+1)`, Promoter, Upstream100K, All, Exon_Count:`-1e6`) %>% 
+  select(Gene_Name, description, `log2(TPM+1)`, Promoter, Upstream100K, All, Exon_Value:`-1e6`) %>% 
   DT::datatable()
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
 punctate_upstream <- punctate_upstream %>% select(`1e6`:`-1e6`, `log2(TPM+1)`, Promoter, Upstream100K, All)
 atac_heatmap <- punctate_upstream %>% select(-`log2(TPM+1)`, -Promoter, -Upstream100K, -All) %>% 
-  Heatmap(col = colorRamp2(c(-4, 0, 4), viridis(3)),
+  Heatmap(col = colorRamp2(c(-100, 0, 100), viridis(3)),
           cluster_columns = F,
-          name = 'Number of Peaks in Window GFP <-> iPSC',
+          name = 'Peaks Score in Window GFP - RFP',
+          cluster_rows = F,
           show_row_names = F)
 
 region_heatmap <- punctate_upstream %>% select(Promoter, Upstream100K, All) %>% 
-  Heatmap(col = colorRamp2(c(-3, 0, 3), viridis(3)),
+  Heatmap(col = colorRamp2(c(-100, 0, 100), viridis(3)),
           cluster_columns = F,
-          name = 'Aggregation ATAC Peaks GFP <-> RFP',
+          name = 'Aggregation Peak Score GFP - RFP',
           show_row_names = F,
+          cluster_rows = F,
           show_heatmap_legend = F)
 
 expression_heatmap <- punctate_upstream %>% select(`log2(TPM+1)`) %>% 
   Heatmap(col = colorRamp2(c(-2, 0, 2), magma(3)),
           cluster_columns = F,
-          name = 'log2(TPM+1) Delta GFP <-> RFP')
+          cluster_rows = F,
+          name = 'log2(TPM+1) Delta GFP - RFP')
 atac_heatmap + region_heatmap + expression_heatmap
 
 ```
 
 Fewer peaks, more expression RFP -> GFP
-```{r, fig.height=12, fig.width=4}
-delta_cgm <- (cgm_gfp %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Count:Gene_length, `log2(TPM+1)`)) - (cgm_rfp %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Count:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
+```{r, fig.height=7, fig.width=4}
+delta_cgm <- (cgm_gfp_h3k27ac_Value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
+             (cgm_rfp_h3k27ac_Value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Value:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
 delta_cgm$Gene_Name = cgm_gfp$Gene_Name
-#delta_cgm$var <- apply(delta_cgm %>% select(Exon_Count:`-1e6`), 1, var)
+#delta_cgm$var <- apply(delta_cgm %>% select(Exon_Value:`-1e6`), 1, var)
 
 delta_cgm <- delta_cgm %>% mutate(Promoter = `5000` + `1000`,
                                   Upstream100K = `1000` + `5000` + `1e4` + `5e4` + `1e5`) %>% 
   unique()
-delta_cgm %>% select(Exon_Count:`-1e6`) %>% rowSums(na.rm=TRUE) -> delta_cgm$All
+delta_cgm %>% select(Exon_Value:`-1e6`) %>% rowSums(na.rm=TRUE) -> delta_cgm$All
 
 
 punctate_upstream <- delta_cgm %>% 
-   filter(`log2(TPM+1)` > 1) %>% filter(Promoter < -1 | Upstream100K < -1 | All < -1)
+  filter(`log2(TPM+1)` > 0.5) %>% filter(Promoter < -50 | Upstream100K < -50 | All < -50) %>% 
+  arrange(`log2(TPM+1)`)
+nrow(punctate_upstream)
 punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = c("Gene_Name" = "symbol")) %>% 
-  select(Gene_Name, description, `log2(TPM+1)`, Promoter, Upstream100K, All, Exon_Count:`-1e6`) %>% 
+  select(Gene_Name, description, `log2(TPM+1)`, Promoter, Upstream100K, All, Exon_Value:`-1e6`) %>% 
   DT::datatable()
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
 punctate_upstream <- punctate_upstream %>% select(`1e6`:`-1e6`, `log2(TPM+1)`, Promoter, Upstream100K, All)
 atac_heatmap <- punctate_upstream %>% select(-`log2(TPM+1)`, -Promoter, -Upstream100K, -All) %>% 
-  Heatmap(col = colorRamp2(c(-4, 0, 4), viridis(3)),
+  Heatmap(col = colorRamp2(c(-100, 0, 100), viridis(3)),
           cluster_columns = F,
-          name = 'Number of Peaks in Window GFP <-> iPSC',
+          name = 'Peaks Score in Window GFP - RFP',
+          cluster_rows = F,
           show_row_names = F)
 
 region_heatmap <- punctate_upstream %>% select(Promoter, Upstream100K, All) %>% 
-  Heatmap(col = colorRamp2(c(-3, 0, 3), viridis(3)),
+  Heatmap(col = colorRamp2(c(-100, 0, 100), viridis(3)),
           cluster_columns = F,
-          name = 'Aggregation ATAC Peaks GFP <-> RFP',
+          name = 'Aggregation Peak Score GFP - RFP',
           show_row_names = F,
+          cluster_rows = F,
           show_heatmap_legend = F)
 
 expression_heatmap <- punctate_upstream %>% select(`log2(TPM+1)`) %>% 
   Heatmap(col = colorRamp2(c(-2, 0, 2), magma(3)),
           cluster_columns = F,
-          name = 'log2(TPM+1) Delta GFP <-> RFP')
+          cluster_rows = F,
+          name = 'log2(TPM+1) Delta GFP - RFP')
 atac_heatmap + region_heatmap + expression_heatmap
 
 ```
 
 Fewer peaks, less expression RFP -> GFP
 ```{r, fig.height=7, fig.width=4}
-delta_cgm <- (cgm_gfp %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Count:Gene_length, `log2(TPM+1)`)) - (cgm_rfp %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Count:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
+delta_cgm <- (cgm_gfp_h3k27ac_Value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
+             (cgm_rfp_h3k27ac_Value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Value:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
 delta_cgm$Gene_Name = cgm_gfp$Gene_Name
-#delta_cgm$var <- apply(delta_cgm %>% select(Exon_Count:`-1e6`), 1, var)
+#delta_cgm$var <- apply(delta_cgm %>% select(Exon_Value:`-1e6`), 1, var)
 
 delta_cgm <- delta_cgm %>% mutate(Promoter = `5000` + `1000`,
                                   Upstream100K = `1000` + `5000` + `1e4` + `5e4` + `1e5`) %>% 
   unique()
-delta_cgm %>% select(Exon_Count:`-1e6`) %>% rowSums(na.rm=TRUE) -> delta_cgm$All
+delta_cgm %>% select(Exon_Value:`-1e6`) %>% rowSums(na.rm=TRUE) -> delta_cgm$All
 
 
 punctate_upstream <- delta_cgm %>% 
-   filter(`log2(TPM+1)` < -1) %>% filter(Promoter < -1 | Upstream100K < -1 | All < -1)
+  filter(`log2(TPM+1)` < -0.5) %>% filter(Promoter < -50 | Upstream100K < -50 | All < -50) %>% 
+  arrange(`log2(TPM+1)`)
+nrow(punctate_upstream)
 punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = c("Gene_Name" = "symbol")) %>% 
-  select(Gene_Name, description, `log2(TPM+1)`, Promoter, Upstream100K, All, Exon_Count:`-1e6`) %>% 
+  select(Gene_Name, description, `log2(TPM+1)`, Promoter, Upstream100K, All, Exon_Value:`-1e6`) %>% 
   DT::datatable()
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
 punctate_upstream <- punctate_upstream %>% select(`1e6`:`-1e6`, `log2(TPM+1)`, Promoter, Upstream100K, All)
 atac_heatmap <- punctate_upstream %>% select(-`log2(TPM+1)`, -Promoter, -Upstream100K, -All) %>% 
-  Heatmap(col = colorRamp2(c(-4, 0, 4), viridis(3)),
+  Heatmap(col = colorRamp2(c(-100, 0, 100), viridis(3)),
           cluster_columns = F,
-          name = 'Number of Peaks in Window GFP <-> iPSC',
+          name = 'Peaks Score in Window GFP - RFP',
+          cluster_rows = F,
           show_row_names = F)
 
 region_heatmap <- punctate_upstream %>% select(Promoter, Upstream100K, All) %>% 
-  Heatmap(col = colorRamp2(c(-3, 0, 3), viridis(3)),
+  Heatmap(col = colorRamp2(c(-100, 0, 100), viridis(3)),
           cluster_columns = F,
-          name = 'Aggregation ATAC Peaks GFP <-> RFP',
+          name = 'Aggregation Peak Score GFP - RFP',
           show_row_names = F,
+          cluster_rows = F,
           show_heatmap_legend = F)
 
 expression_heatmap <- punctate_upstream %>% select(`log2(TPM+1)`) %>% 
   Heatmap(col = colorRamp2(c(-2, 0, 2), magma(3)),
           cluster_columns = F,
-          name = 'log2(TPM+1) Delta GFP <-> RFP')
+          cluster_rows = F,
+          name = 'log2(TPM+1) Delta GFP - RFP')
 atac_heatmap + region_heatmap + expression_heatmap
+
 
 ```
