@@ -48,13 +48,15 @@ cgm_rfp_h3k27ac_score <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_
   left_join(. , expression %>% filter(Line == 'RFP') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
 ```
 
-iPSC -> GFP
+# iPSC -> GFP
 
-Not using the h3k27ac intersection, as the iPSC h3k27ac ChIP-seq samples I found had horrific (near zero) overlap with our iPSC ATAC data.
+ATAC + RNA-seq
+
+Not using the h3k27ac intersection for this comparison, as the iPSC h3k27ac ChIP-seq samples I found had horrific (near zero) overlap with our iPSC ATAC data.
 ```{r, fig.height=11, fig.width=4}
 delta_cgm <- (cgm_gfp_score %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
   (cgm_ipsc_score %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Value:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
-delta_cgm$Gene_Name = cgm_gfp$Gene_Name
+delta_cgm$Gene_Name = cgm_gfp_score$Gene_Name
 #delta_cgm$var <- apply(delta_cgm %>% select(Exon_Value:`-1e6`), 1, var)
 
 punctate_upstream <- delta_cgm %>% mutate(`5k_upstream` = `5000` + `1000`) %>% 
@@ -73,7 +75,7 @@ atac_heatmap <- punctate_upstream %>% select(-`log2(TPM+1)`) %>%
           name = 'Peak Score in Window GFP - iPSC',
           show_row_names = F)
 expression_heatmap <- punctate_upstream %>% select(`log2(TPM+1)`) %>% 
-  Heatmap(col = colorRamp2(c(-100, 0, 100), magma(3)),
+  Heatmap(col = colorRamp2(c(-1, 0, 1), magma(3)),
           cluster_columns = F,
           name = 'log2(TPM+1) Delta GFP <-> iPSC')
 atac_heatmap + expression_heatmap
