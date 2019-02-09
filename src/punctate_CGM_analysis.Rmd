@@ -56,7 +56,7 @@ Not using the h3k27ac intersection for this comparison, as the iPSC h3k27ac ChIP
 
 Narrowing in on promoter region (1000bp) with ATAC score > 100 (GSX2 has a peak score of 105 within 1000bp of TSS)
 
-First up: More open in TSS, higher gene expression (2X or more GFP/iPSC)
+## First up: More open in TSS, higher gene expression (2X or more GFP/iPSC)
 ```{r, fig.height=11, fig.width=4}
 delta_cgm <- (cgm_gfp_score %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
   (cgm_ipsc_score %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Value:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
@@ -86,7 +86,7 @@ expression_heatmap <- punctate_upstream %>% select(`log2(TPM+1)`) %>%
 atac_heatmap + expression_heatmap
 ```
 
-Second up: More open in TSS, less gene expression (-2X or more GFP/iPSC)
+## Second up: More open in TSS, less gene expression (-2X or more GFP/iPSC)
 ```{r, fig.height=6, fig.width=4}
 delta_cgm <- (cgm_gfp_score %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
   (cgm_ipsc_score %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Value:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
@@ -117,13 +117,17 @@ atac_heatmap + expression_heatmap
 ```
 
 
-# Modified approach from `trends.Rmd` where the filtering is based upon evaluating two settings:
-- Within 1000bp
-- Within 100,000bp
-(Not using the entire region)
+# GFP vs RFP
 
-# More peaks, more expression RFP -> GFP (0.5 log2(TPM) GFP - RFP)
+Modified approach from `trends.Rmd` where the filtering is based upon evaluating two settings:
+  - Within 1000bp
+  - Within 100,000bp
+  - (Not using the entire region)
+
+## More peaks, more expression RFP -> GFP (0.5 log2(TPM) GFP - RFP)
 **WITH h3k27ac Intersection**
+
+0.5 log(TPM+1) delta set as GSX2 is just over 0.5 log2(TPM+1) overexpressed GFP - RFP
 ```{r, fig.height=6, fig.width=4}
 delta_cgm <- (cgm_gfp_h3k27ac_value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
              (cgm_rfp_h3k27ac_value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Value:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
@@ -168,7 +172,7 @@ atac_heatmap + region_heatmap + expression_heatmap
 
 ```
 
-# More peaks, less expression RFP -> GFP
+## More peaks, less expression RFP -> GFP
 Notice how there are fewer...which is good, as ATAC + h3k27Ac is a canonical "activation" signal
 ```{r, fig.height=3, fig.width=4}
 delta_cgm <- (cgm_gfp_h3k27ac_value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
@@ -214,8 +218,11 @@ atac_heatmap + region_heatmap + expression_heatmap
 
 ```
 
-Fewer peaks, more expression RFP -> GFP
-```{r, fig.height=3, fig.width=4}
+# Fewer peaks, more expression RFP -> GFP
+
+
+I've increased the stringency for log2(TPM+1) change from 0.5 to 1, as there are way too many results.
+```{r, fig.height=6, fig.width=4}
 delta_cgm <- (cgm_gfp_h3k27ac_value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
              (cgm_rfp_h3k27ac_value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Value:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
 delta_cgm$Gene_Name = cgm_gfp$Gene_Name
@@ -259,7 +266,9 @@ atac_heatmap + region_heatmap + expression_heatmap
 
 ```
 
-Fewer peaks, less expression RFP -> GFP
+# Fewer peaks, less expression RFP -> GFP
+
+I've increased the stringency for log2(TPM+1) change from 0.5 to 1, as there are way too many results.
 ```{r, fig.height=3, fig.width=4}
 delta_cgm <- (cgm_gfp_h3k27ac_value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
              (cgm_rfp_h3k27ac_value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Value:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
