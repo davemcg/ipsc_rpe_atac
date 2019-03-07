@@ -421,7 +421,7 @@ write(punctate_upstream %>%
             left_join(., grch38 %>% select(ensgene, symbol, description), by = c("Gene_Name" = "symbol")) %>% 
             left_join(grch38_tx2gene) %>% 
             pull(enstxp) %>% 
-            unique() %>% 
+            unique(),
           file = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_8.txt')
 
 
