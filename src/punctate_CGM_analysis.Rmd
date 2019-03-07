@@ -18,33 +18,33 @@ library(ComplexHeatmap)
 library(viridis)
 library(circlize)
 library(annotables)
-#peak <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/peak_full/homer_GFP__not__IPSC/all/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz')
+#peak <- read_tsv('/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/peak_full/homer_GFP__not__IPSC/all/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz')
 expression <- read_csv('~/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line_with_Diff_Exp.tsv', col_types = 'ccdddcddd')
 
 # iPSC
-cgm_ipsc_value <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/IPSC_ATAC-Seq_common_peaks.blackListed.narrowPeak.CGM_score.tsv', col_types = 'ccddddddddddddddddd') %>% 
+cgm_ipsc_value <- read_tsv('/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/IPSC_ATAC-Seq_common_peaks.blackListed.narrowPeak.CGM_score.tsv', col_types = 'ccddddddddddddddddd') %>% 
   left_join(. , expression %>% filter(Line == 'iPSC') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
-cgm_ipsc_score <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/IPSC_ATAC-Seq_common_peaks.blackListed.narrowPeak.CGM_score.tsv', col_types = 'ccddddddddddddddddd') %>% 
+cgm_ipsc_score <- read_tsv('/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/IPSC_ATAC-Seq_common_peaks.blackListed.narrowPeak.CGM_score.tsv', col_types = 'ccddddddddddddddddd') %>% 
   left_join(. , expression %>% filter(Line == 'iPSC') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
 
 # GFP
-cgm_gfp_value <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/GFP_ATAC-Seq_common_peaks.blackListed.narrowPeak.CGM_score.tsv', col_types = 'ccddddddddddddddddd') %>% 
+cgm_gfp_value <- read_tsv('/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/GFP_ATAC-Seq_common_peaks.blackListed.narrowPeak.CGM_score.tsv', col_types = 'ccddddddddddddddddd') %>% 
   left_join(. , expression %>% filter(Line == 'GFP') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
-cgm_gfp_score <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/GFP_ATAC-Seq_common_peaks.blackListed.narrowPeak.CGM_score.tsv', col_types = 'ccddddddddddddddddd') %>% 
+cgm_gfp_score <- read_tsv('/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/GFP_ATAC-Seq_common_peaks.blackListed.narrowPeak.CGM_score.tsv', col_types = 'ccddddddddddddddddd') %>% 
   left_join(. , expression %>% filter(Line == 'GFP') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
-cgm_gfp_h3k27ac_value <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/GFP_ATAC-Seq_common_peaks.h3k27ac_intersect.blackListed.narrowPeak.CGM_score.tsv', col_types = 'ccddddddddddddddddd') %>% 
+cgm_gfp_h3k27ac_value <- read_tsv('/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/GFP_ATAC-Seq_common_peaks.h3k27ac_intersect.blackListed.narrowPeak.CGM_score.tsv', col_types = 'ccddddddddddddddddd') %>% 
   left_join(. , expression %>% filter(Line == 'GFP') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
-cgm_gfp_h3k27ac_score <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/GFP_ATAC-Seq_common_peaks.h3k27ac_intersect.blackListed.narrowPeak.CGM_score.tsv', col_types = 'ccddddddddddddddddd') %>% 
+cgm_gfp_h3k27ac_score <- read_tsv('/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/GFP_ATAC-Seq_common_peaks.h3k27ac_intersect.blackListed.narrowPeak.CGM_score.tsv', col_types = 'ccddddddddddddddddd') %>% 
   left_join(. , expression %>% filter(Line == 'GFP') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
 
 # RFP
-cgm_rfp_value <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/RFP_ATAC-Seq_common_peaks.blackListed.narrowPeak.CGM_score.tsv', col_types = 'ccddddddddddddddddd') %>% 
+cgm_rfp_value <- read_tsv('/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/RFP_ATAC-Seq_common_peaks.blackListed.narrowPeak.CGM_score.tsv', col_types = 'ccddddddddddddddddd') %>% 
   left_join(. , expression %>% filter(Line == 'RFP') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
-cgm_rfp_score <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/RFP_ATAC-Seq_common_peaks.blackListed.narrowPeak.CGM_score.tsv', col_types = 'ccddddddddddddddddd') %>% 
+cgm_rfp_score <- read_tsv('/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/RFP_ATAC-Seq_common_peaks.blackListed.narrowPeak.CGM_score.tsv', col_types = 'ccddddddddddddddddd') %>% 
   left_join(. , expression %>% filter(Line == 'RFP') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
-cgm_rfp_h3k27ac_value <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/RFP_ATAC-Seq_common_peaks.h3k27ac_intersect.blackListed.narrowPeak.CGM_score.tsv', col_types = 'ccddddddddddddddddd') %>% 
+cgm_rfp_h3k27ac_value <- read_tsv('/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/RFP_ATAC-Seq_common_peaks.h3k27ac_intersect.blackListed.narrowPeak.CGM_score.tsv', col_types = 'ccddddddddddddddddd') %>% 
   left_join(. , expression %>% filter(Line == 'RFP') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
-cgm_rfp_h3k27ac_score <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/RFP_ATAC-Seq_common_peaks.h3k27ac_intersect.blackListed.narrowPeak.CGM_score.tsv', col_types = 'ccddddddddddddddddd') %>% 
+cgm_rfp_h3k27ac_score <- read_tsv('/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/CGM/RFP_ATAC-Seq_common_peaks.h3k27ac_intersect.blackListed.narrowPeak.CGM_score.tsv', col_types = 'ccddddddddddddddddd') %>% 
   left_join(. , expression %>% filter(Line == 'RFP') %>% select(Gene, lsTPM), by = c('Gene_Name' = 'Gene'))
 ```
 
@@ -70,6 +70,17 @@ punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = 
   select(Gene_Name, description, `log2(TPM+1)`, Exon_Value:`-1e6`) %>% unique() %>% 
   arrange(`log2(TPM+1)`) %>% 
   DT::datatable()
+
+# output
+write_tsv(punctate_upstream %>% 
+            left_join(., grch38 %>% select(ensgene, symbol, description), by = c("Gene_Name" = "symbol")) %>% 
+            left_join(grch38_tx2gene) %>% 
+            pull(enstxp) %>% 
+            unique() %>% 
+            writeLines(), 
+          path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_1.txt')
+
+
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
 punctate_upstream <- punctate_upstream %>% select(`1e6`:`-1e6`, `log2(TPM+1)`)
 atac_heatmap <- punctate_upstream %>% select(-`log2(TPM+1)`) %>% 
@@ -100,6 +111,17 @@ punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = 
   select(Gene_Name, description, `log2(TPM+1)`, Exon_Value:`-1e6`) %>% unique() %>% 
   arrange(`log2(TPM+1)`) %>% 
   DT::datatable()
+
+# output
+write_tsv(punctate_upstream %>% 
+            left_join(., grch38 %>% select(ensgene, symbol, description), by = c("Gene_Name" = "symbol")) %>% 
+            left_join(grch38_tx2gene) %>% 
+            pull(enstxp) %>% 
+            unique() %>% 
+            writeLines(), 
+          path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_2.txt')
+
+
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
 punctate_upstream <- punctate_upstream %>% select(`1e6`:`-1e6`, `log2(TPM+1)`)
 atac_heatmap <- punctate_upstream %>% select(-`log2(TPM+1)`) %>% 
@@ -130,6 +152,17 @@ punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = 
   select(Gene_Name, description, `log2(TPM+1)`, Exon_Value:`-1e6`) %>% unique() %>% 
   arrange(`log2(TPM+1)`) %>% 
   DT::datatable()
+
+# output
+write_tsv(punctate_upstream %>% 
+            left_join(., grch38 %>% select(ensgene, symbol, description), by = c("Gene_Name" = "symbol")) %>% 
+            left_join(grch38_tx2gene) %>% 
+            pull(enstxp) %>% 
+            unique() %>% 
+            writeLines(), 
+          path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_3.txt')
+
+
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
 punctate_upstream <- punctate_upstream %>% select(`1e6`:`-1e6`, `log2(TPM+1)`)
 atac_heatmap <- punctate_upstream %>% select(-`log2(TPM+1)`) %>% 
@@ -160,6 +193,17 @@ punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = 
   select(Gene_Name, description, `log2(TPM+1)`, Exon_Value:`-1e6`) %>% unique() %>% 
   arrange(`log2(TPM+1)`) %>% 
   DT::datatable()
+
+# output
+write_tsv(punctate_upstream %>% 
+            left_join(., grch38 %>% select(ensgene, symbol, description), by = c("Gene_Name" = "symbol")) %>% 
+            left_join(grch38_tx2gene) %>% 
+            pull(enstxp) %>% 
+            unique() %>% 
+            writeLines(), 
+          path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_4.txt')
+
+
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
 punctate_upstream <- punctate_upstream %>% select(`1e6`:`-1e6`, `log2(TPM+1)`)
 atac_heatmap <- punctate_upstream %>% select(-`log2(TPM+1)`) %>% 
@@ -190,7 +234,7 @@ Modified approach from `trends.Rmd` where the filtering is based upon evaluating
 ```{r, fig.height=6, fig.width=4}
 delta_cgm <- (cgm_gfp_h3k27ac_value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
              (cgm_rfp_h3k27ac_value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Value:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
-delta_cgm$Gene_Name = cgm_gfp$Gene_Name
+delta_cgm$Gene_Name = cgm_gfp_h3k27ac_score$Gene_Name
 #delta_cgm$var <- apply(delta_cgm %>% select(Exon_Value:`-1e6`), 1, var)
 
 delta_cgm <- delta_cgm %>% mutate(Promoter = `1000`,
@@ -205,6 +249,17 @@ punctate_upstream <- delta_cgm %>%
 punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = c("Gene_Name" = "symbol")) %>% 
   select(Gene_Name, description, `log2(TPM+1)`, Promoter, Upstream100K, Exon_Value:`-1e6`) %>% 
   DT::datatable()
+
+# output
+write_tsv(punctate_upstream %>% 
+            left_join(., grch38 %>% select(ensgene, symbol, description), by = c("Gene_Name" = "symbol")) %>% 
+            left_join(grch38_tx2gene) %>% 
+            pull(enstxp) %>% 
+            unique() %>% 
+            writeLines(), 
+          path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_5.txt')
+
+
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
 punctate_upstream <- punctate_upstream %>% select(`1e6`:`-1e6`, `log2(TPM+1)`, Promoter, Upstream100K)
 atac_heatmap <- punctate_upstream %>% select(-`log2(TPM+1)`, -Promoter, -Upstream100K) %>% 
@@ -236,7 +291,7 @@ Notice how there are fewer...which is good, as ATAC + h3k27Ac is a canonical "ac
 ```{r, fig.height=3, fig.width=4}
 delta_cgm <- (cgm_gfp_h3k27ac_value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
              (cgm_rfp_h3k27ac_value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Value:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
-delta_cgm$Gene_Name = cgm_gfp$Gene_Name
+delta_cgm$Gene_Name = cgm_gfp_h3k27ac_value$Gene_Name
 #delta_cgm$var <- apply(delta_cgm %>% select(Exon_Value:`-1e6`), 1, var)
 
 delta_cgm <- delta_cgm %>% mutate(Promoter = `1000`,
@@ -251,6 +306,17 @@ punctate_upstream <- delta_cgm %>%
 punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = c("Gene_Name" = "symbol")) %>% 
   select(Gene_Name, description, `log2(TPM+1)`, Promoter, Upstream100K, Exon_Value:`-1e6`) %>% 
   DT::datatable()
+
+# output
+write_tsv(punctate_upstream %>% 
+            left_join(., grch38 %>% select(ensgene, symbol, description), by = c("Gene_Name" = "symbol")) %>% 
+            left_join(grch38_tx2gene) %>% 
+            pull(enstxp) %>% 
+            unique() %>% 
+            writeLines(), 
+          path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_6.txt')
+
+
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
 punctate_upstream <- punctate_upstream %>% select(`1e6`:`-1e6`, `log2(TPM+1)`, Promoter, Upstream100K)
 atac_heatmap <- punctate_upstream %>% select(-`log2(TPM+1)`, -Promoter, -Upstream100K) %>% 
@@ -283,7 +349,7 @@ I've increased the stringency for log2(TPM+1) change from 0.5 to 1, as there are
 ```{r, fig.height=6, fig.width=4}
 delta_cgm <- (cgm_gfp_h3k27ac_value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
              (cgm_rfp_h3k27ac_value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Value:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
-delta_cgm$Gene_Name = cgm_gfp$Gene_Name
+delta_cgm$Gene_Name = cgm_gfp_h3k27ac_value$Gene_Name
 #delta_cgm$var <- apply(delta_cgm %>% select(Exon_Value:`-1e6`), 1, var)
 
 delta_cgm <- delta_cgm %>% mutate(Promoter = `1000`,
@@ -298,6 +364,17 @@ punctate_upstream <- delta_cgm %>%
 punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = c("Gene_Name" = "symbol")) %>% 
   select(Gene_Name, description, `log2(TPM+1)`, Promoter, Upstream100K, Exon_Value:`-1e6`) %>% 
   DT::datatable()
+
+# output
+write_tsv(punctate_upstream %>% 
+            left_join(., grch38 %>% select(ensgene, symbol, description), by = c("Gene_Name" = "symbol")) %>% 
+            left_join(grch38_tx2gene) %>% 
+            pull(enstxp) %>% 
+            unique() %>% 
+            writeLines(), 
+          path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_7.txt')
+
+
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
 punctate_upstream <- punctate_upstream %>% select(`1e6`:`-1e6`, `log2(TPM+1)`, Promoter, Upstream100K)
 atac_heatmap <- punctate_upstream %>% select(-`log2(TPM+1)`, -Promoter, -Upstream100K) %>% 
@@ -330,7 +407,7 @@ I've increased the stringency for log2(TPM+1) change from 0.5 to 1, as there are
 ```{r, fig.height=3, fig.width=4}
 delta_cgm <- (cgm_gfp_h3k27ac_value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
              (cgm_rfp_h3k27ac_value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Value:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
-delta_cgm$Gene_Name = cgm_gfp$Gene_Name
+delta_cgm$Gene_Name = cgm_gfp_h3k27ac_value$Gene_Name
 #delta_cgm$var <- apply(delta_cgm %>% select(Exon_Value:`-1e6`), 1, var)
 
 delta_cgm <- delta_cgm %>% mutate(Promoter = `1000`,
@@ -345,6 +422,17 @@ punctate_upstream <- delta_cgm %>%
 punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = c("Gene_Name" = "symbol")) %>% 
   select(Gene_Name, description, `log2(TPM+1)`, Promoter, Upstream100K, Exon_Value:`-1e6`) %>% 
   DT::datatable()
+
+# output
+write_tsv(punctate_upstream %>% 
+            left_join(., grch38 %>% select(ensgene, symbol, description), by = c("Gene_Name" = "symbol")) %>% 
+            left_join(grch38_tx2gene) %>% 
+            pull(enstxp) %>% 
+            unique() %>% 
+            writeLines(), 
+          path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_8.txt')
+
+
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
 punctate_upstream <- punctate_upstream %>% select(`1e6`:`-1e6`, `log2(TPM+1)`, Promoter, Upstream100K)
 atac_heatmap <- punctate_upstream %>% select(-`log2(TPM+1)`, -Promoter, -Upstream100K) %>% 
