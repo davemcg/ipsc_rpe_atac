@@ -94,7 +94,7 @@ wildcard_constraints:
 
 rule all:
 	input:
-		expand('{cell_type}_woo', cell_type = ['GFP_ATAC-Seq']),
+		expand('homer/{cell_type}_{num}_homer_TFBS_run', cell_type = ['GFP_ATAC-Seq'], num = [1,2,3,4,5,6,7,8]),
 		expand('macs_peak/{cell_type}_common_peaks.blackListed.closestTSS.narrowPeak', cell_type = ['GFP_ATAC-Seq']),
 		expand('computeMatrix/{cell_type}.matrix.gz', cell_type = ['IPSC_ChIP_h3k27ac','GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
 		expand('CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM_score.tsv', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
@@ -1100,16 +1100,18 @@ rule make_CGM:
 
 # create punctate chromatin differences report
 # TF_gene_network.R does a broad (1mb) search for diff open regions around a gene
+localrules: TF_gene_punctate_R
 rule TF_gene_punctate_R:
 	input:
-		'peak_full/homer_{comparison}/{peak_type}/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz', 
+		#'peak_full/homer_{comparison}/{peak_type}/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz', 
 		'/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line.tsv', # expression
-		'CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM.tsv' # CGM
+		expand('CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM.tsv', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq'])# CGM
 	output:
-		'bloop'
+		'punctate/punctate_analysis_{num}.txt'
 	shell:
 		"""
-		echo woo
+		module load {config[R_version]}
+		Rscript -e "rmarkdown::render('/home/mcgaugheyd/git/ipsc_rpe_atac/src/punctate_CGM_analysis.Rmd')"
 		"""
 
 # take gene lists from TF_gene_punctate_R
@@ -1117,13 +1119,14 @@ rule TF_gene_punctate_R:
 #localrules: homer_TFBS
 rule homer_TFBS:
 	input:
+		gene_list = 'punctate/punctate_analysis_{num}.txt',
 		bed = 'macs_peak/{cell_type}_common_peaks.blackListed.closestTSS.narrowPeak',
 		summit = 'macs_peak/{cell_type}_summits.bed'
 	output:
-		homer_in = '{cell_type}_woo',
-		homer_out = directory('{cell_type}_homer_unique_peaks_test')
+		homer_in = '{cell_type}_{num}_common_peaks.blackListed.closestTSS.narrowPeak.summits',
+		homer_out = directory('homer/{cell_type}_{num}_homer_TFBS_run')
 	params:
-		out_dir = '{cell_type}_homer_unique_peaks_test'
+		out_dir = 'homer/{cell_type}_{num}_homer_TFBS_run'
 	threads:
 		8
 	shell:
@@ -1131,7 +1134,7 @@ rule homer_TFBS:
 		module load {config[bedtools_version]}
 		module load {config[homer_version]}
 		
-		# peaks within 1000bp
+		# peaks within 1000bp of target genes
 		zcat {input.bed} | awk '$NF < 1000 {{print $0}}' | grep -f {input.gene_list} - | \
 			cut -f1,2,3 | sort -k1,1 -k2,2n | uniq | \
 			bedtools intersect -a - -b {input.summit} -wb > {output.homer_in}
@@ -1226,5 +1229,4 @@ rule ucsc_view_homer_motifs:
 		cp -f {params.base_path}{input}.bb {output}
 		rm {input}TEMP
 		"""
-
 
