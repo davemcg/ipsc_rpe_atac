@@ -72,13 +72,13 @@ punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = 
   DT::datatable()
 
 # output
-write_tsv(punctate_upstream %>% 
+write(punctate_upstream %>% 
             left_join(., grch38 %>% select(ensgene, symbol, description), by = c("Gene_Name" = "symbol")) %>% 
             left_join(grch38_tx2gene) %>% 
             pull(enstxp) %>% 
             unique() %>% 
             writeLines(), 
-          path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_1.txt')
+          file = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_1.txt')
 
 
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
@@ -113,13 +113,13 @@ punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = 
   DT::datatable()
 
 # output
-write_tsv(punctate_upstream %>% 
+write(punctate_upstream %>% 
             left_join(., grch38 %>% select(ensgene, symbol, description), by = c("Gene_Name" = "symbol")) %>% 
             left_join(grch38_tx2gene) %>% 
             pull(enstxp) %>% 
             unique() %>% 
             writeLines(), 
-          path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_2.txt')
+          file = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_2.txt')
 
 
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
@@ -154,13 +154,13 @@ punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = 
   DT::datatable()
 
 # output
-write_tsv(punctate_upstream %>% 
+write(punctate_upstream %>% 
             left_join(., grch38 %>% select(ensgene, symbol, description), by = c("Gene_Name" = "symbol")) %>% 
             left_join(grch38_tx2gene) %>% 
             pull(enstxp) %>% 
             unique() %>% 
             writeLines(), 
-          path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_3.txt')
+          file = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_3.txt')
 
 
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
@@ -195,13 +195,13 @@ punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = 
   DT::datatable()
 
 # output
-write_tsv(punctate_upstream %>% 
+write(punctate_upstream %>% 
             left_join(., grch38 %>% select(ensgene, symbol, description), by = c("Gene_Name" = "symbol")) %>% 
             left_join(grch38_tx2gene) %>% 
             pull(enstxp) %>% 
             unique() %>% 
             writeLines(), 
-          path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_4.txt')
+          file = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_4.txt')
 
 
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
@@ -251,13 +251,13 @@ punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = 
   DT::datatable()
 
 # output
-write_tsv(punctate_upstream %>% 
+write(punctate_upstream %>% 
             left_join(., grch38 %>% select(ensgene, symbol, description), by = c("Gene_Name" = "symbol")) %>% 
             left_join(grch38_tx2gene) %>% 
             pull(enstxp) %>% 
             unique() %>% 
             writeLines(), 
-          path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_5.txt')
+          file = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_5.txt')
 
 
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
@@ -308,13 +308,13 @@ punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = 
   DT::datatable()
 
 # output
-write_tsv(punctate_upstream %>% 
+write(punctate_upstream %>% 
             left_join(., grch38 %>% select(ensgene, symbol, description), by = c("Gene_Name" = "symbol")) %>% 
             left_join(grch38_tx2gene) %>% 
             pull(enstxp) %>% 
             unique() %>% 
             writeLines(), 
-          path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_6.txt')
+          file = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_6.txt')
 
 
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
@@ -366,13 +366,13 @@ punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = 
   DT::datatable()
 
 # output
-write_tsv(punctate_upstream %>% 
+write(punctate_upstream %>% 
             left_join(., grch38 %>% select(ensgene, symbol, description), by = c("Gene_Name" = "symbol")) %>% 
             left_join(grch38_tx2gene) %>% 
             pull(enstxp) %>% 
             unique() %>% 
             writeLines(), 
-          path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_7.txt')
+          file = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_7.txt')
 
 
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
@@ -424,13 +424,13 @@ punctate_upstream %>% left_join(., grch38 %>% select(symbol, description), by = 
   DT::datatable()
 
 # output
-write_tsv(punctate_upstream %>% 
+write(punctate_upstream %>% 
             left_join(., grch38 %>% select(ensgene, symbol, description), by = c("Gene_Name" = "symbol")) %>% 
             left_join(grch38_tx2gene) %>% 
             pull(enstxp) %>% 
             unique() %>% 
             writeLines(), 
-          path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_8.txt')
+          file = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/punctate/punctate_analysis_8.txt')
 
 
 row.names(punctate_upstream) <- punctate_upstream$Gene_Name  
