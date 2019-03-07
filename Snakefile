@@ -8,22 +8,37 @@ from itertools import chain
 # read metadata into dictionary for snakemake to link samples to lane fastqs 
 # one sample can have 1 to n lane fastq
 # also making a TYPE <-> SAMPLE dict (where type is RFP / GFP / iPSC)
-SAMPLE_PATH = dict()
+SAMPLE_PATH = dict() 
 TYPE_SAMPLE = dict()
 metadata = open(config['metadata_file'])
 for line in metadata:
 	path = line.split(',')[4][:-1]
 	sample = line.split(',')[1]
-	cell_type = sample.split('_')[0].upper()
+	cell_type = sample.split('_')[0].upper() + '_' + line.split(',')[2]
 	# skip header
 	if sample == 'Sample':
 		continue
+	# skip SRA samples, do internal samples
+#	if path != 'SRA':
 	if sample not in SAMPLE_PATH:
 		SAMPLE_PATH[sample] = [path]
 	else:
 		old_path = SAMPLE_PATH[sample]
 		old_path.append(path)
 		SAMPLE_PATH[sample] = old_path
+	# SRA samples, build dict
+#	elif path == 'SRA':
+#		if sample not in SAMPLE_RUN:
+#			SAMPLE_RUN[sample] = [path] 
+#		else:
+#			old_run = SAMPLE_PATH[sample]
+#			old_run.append(path)
+#			SAMPLE_PATH[sample] = old_run
+#	else:
+#		print(line)
+#		print(path)
+#		break
+
 	if cell_type not in TYPE_SAMPLE:
 		TYPE_SAMPLE[cell_type] = [sample] 
 	else:
@@ -31,6 +46,18 @@ for line in metadata:
 		old_sample = list(set(old_sample))
 		old_sample.append(sample)
 		TYPE_SAMPLE[cell_type] = old_sample
+		
+#print(SAMPLE_RUN)
+#print(SAMPLE_PATH)
+#print(TYPE_SAMPLE)
+#
+def fastq_pair_maker(wildcards):
+	if 'SRR' in wildcards.lane_sample:
+		out = 'fastq/' + wildcards.lane_sample
+	else:
+		out = ['fastq/' + wildcards.lane_sample + '_R1_001.fastq.gz', \
+				'fastq/' + wildcards.lane_sample + '_R2_001.fastq.gz']
+	return(out)
 
 # given homer folder, go into homerResults and knownResults subfolders and extract all motif names
 # and write file names for homer annotation for each motif
@@ -44,7 +71,7 @@ def yank_all_motifs(wildcards):
 	return [path + 'peak_by_motif/' + i + '.bed' for i in motif_names]
 	#return [path + 'peak_by_motif/' + i + '.bed' for i in motif_names][0:5] # use for config_pretty.yaml for making dag
 
-localrules: pull_lane_fastq_from_nisc, retrieve_and_process_black_list, black_list, \
+localrules: pull_lane_fastq_from_nisc_or_sra, retrieve_and_process_black_list, black_list, \
 	total_reads, build_tss_regions, \
 	download_HOCOMOCO_meme, reformat_motifs, \
 	union_TFBS, union_TFBS_pretty_ucsc, prettify_union_TFBS, \
@@ -55,7 +82,8 @@ localrules: pull_lane_fastq_from_nisc, retrieve_and_process_black_list, black_li
 	summits_overlapping_common_peaks, \
 	TF_to_target,  highlighted_homer_motif, cat_homer_annotate_peak, \
 	intersect_homer_motifs_with_all_common_peaks, clean_all_common_peaks, \
-	ucsc_view_homer_motifs, ucsc_view_bigWig, ucsc_view_common_peaks
+	ucsc_view_homer_motifs, ucsc_view_bigWig, ucsc_view_common_peaks, \
+	closest_TSS_each_cell_type
 
 wildcard_constraints:
 	sample = '|'.join(list(SAMPLE_PATH.keys())),
@@ -66,31 +94,52 @@ wildcard_constraints:
 
 rule all:
 	input:
+		expand('{cell_type}_woo', cell_type = ['GFP_ATAC-Seq']),
+		expand('macs_peak/{cell_type}_common_peaks.blackListed.closestTSS.narrowPeak', cell_type = ['GFP_ATAC-Seq']),
+		expand('computeMatrix/{cell_type}.matrix.gz', cell_type = ['IPSC_ChIP_h3k27ac','GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
+		expand('CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM_score.tsv', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
+	#	expand('macs_peak/{cell_type}_common_peaks.h3k27ac_intersect.blackListed.narrowPeak', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq'])
+	#	expand('fastq/{SRA_runs}_pass.fastq.gz', SRA_runs = [x for x in list(itertools.chain.from_iterable(SAMPLE_RUN.values()))]),
 		#expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}.bw', sample = list(SAMPLE_PATH.keys())),
 		#expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}_peaks.blackListed.hg19.narrowPeak.bb', sample = list(SAMPLE_PATH.keys())),
 		#'deeptools/multiBamSummary.npz',
 		#'deeptools/multiBamSummary.tsv',
 		#'metrics/reads_by_sample.txt',
 		#'fastqc/multiqc/multiqc_report.html',
-		expand('downsample_bam/{sample}.q5.rmdup.ds.bam', sample = list(SAMPLE_PATH.keys())),
+	#	expand('downsample_bam/{sample}.q5.rmdup.ds.bam', sample = list(SAMPLE_PATH.keys())),
 		#expand('msCentipede/closest_TSS/{cell_type}.{motif}.closestTSS.dat.gz', cell_type = list(TYPE_SAMPLE.keys()), motif = config['motif_IDs']),
 		#expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{motif}.union.HQ.pretty.bb', motif = config['motif_IDs']),
-		#'/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_peaks.blackListed.narrowPeak.bb',
+		'/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_peaks.blackListed.narrowPeak.bb',
 		#'/data/mcgaugheyd/datashare/hufnagel/hg19/interesting_homer_motif.bb',
 		#expand('homer_unique_peaks_{comparison}/{peak_type}/homerResults.html', comparison = config['peak_comparison_pair'], peak_type = ['all','enhancers','promoters']), 
-		expand('network_reports/{comparison}_{peak_type}/{comparison}_{peak_type}_networkAnalysis.html', comparison = config['peak_comparison_pair'], peak_type = ['all','enhancers','promoters'])
+	#	expand('network_reports/{comparison}_{peak_type}/{comparison}_{peak_type}_networkAnalysis.html', comparison = config['peak_comparison_pair'], peak_type = ['all','enhancers','promoters']),
+	#	expand('CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM.tsv', cell_type = list(TYPE_SAMPLE.keys()))
 
-rule pull_lane_fastq_from_nisc:
+rule pull_lane_fastq_from_nisc_or_sra:
 	output:
 		'fastq/{lane_files}'
 	run:
-		lane_files = [x for x in list(itertools.chain.from_iterable(SAMPLE_PATH.values()))]
-		for fastq in lane_files:
-			command = 'rsync -av trek.nhgri.nih.gov:' + fastq + ' fastq/'
-			echo_command = 'echo ' + command
-			shell('echo ' + str(output))
-			shell(echo_command)
-			shell(command)
+		lane_files_full = [x for x in list(itertools.chain.from_iterable(SAMPLE_PATH.values()))]
+		lane_files = [x.split('/')[-1] for x in list(itertools.chain.from_iterable(SAMPLE_PATH.values()))]
+		for fastq in lane_files_full:
+			# SRA files have "pass" in their fastq name
+			if 'pass' not in fastq: 
+				command = 'rsync -av trek.nhgri.nih.gov:' + fastq + ' fastq/'
+				echo_command = 'echo ' + command
+				shell('echo ' + str(output))
+				shell(echo_command)
+				shell(command)
+			# SRA files
+			else:
+				srr = fastq.split('_')[0]
+				command = 'module load sratoolkit; fastq-dump ' + srr + ' -O fastq \
+							--gzip --skip-technical --readids --read-filter pass \
+							--dumpbase --split-3 --clip'
+				echo_command = 'echo ' + command
+				shell('echo ' + str(output))
+				shell('echo ' + command)
+				shell(echo_command)
+				shell(command)
 
 localrules: build_hg19	
 # define build custom hg19
@@ -122,19 +171,22 @@ rule build_bwa_index:
 # fastq to bwa for alignment
 rule align:
 	input:
-		fa = expand('fastq/{{lane_sample}}{pair}.fastq.gz', pair = ['_R1_001', '_R2_001']),
+		fa = fastq_pair_maker,
 		bwa_genome = '/data/mcgaugheyd/genomes/hg19/hg19_bharti_TYR_enhancer.fa',
 		bwa_index = '/data/mcgaugheyd/genomes/hg19/hg19_bharti_TYR_enhancer.fa.bwt'
 	output:
 		temp('realigned/{lane_sample}.bam')
 	threads: 12 
-	shell:
-		"""
-		module load {config[bwa_version]}
-		bwa mem -t {threads} -B 4 -O 6 -E 1 -M {input.bwa_genome} {input.fa} | \
-			samtools view -1 - > \
-			{output}
-		"""
+	run:
+		if 'SRR' not in input[0]:
+			shell('module load {config[bwa_version]}; \
+						bwa mem -t {threads} -B 4 -O 6 -E 1 -M {input.bwa_genome} {input.fa} | \
+						samtools view -1 - >  {output}')
+		else:
+			shell('module load {config[bwa_version]}; \
+						bwa mem -t {threads} -B 4 -O 6 -E 1 -M {input.bwa_genome} fastq/{wildcards.lane_sample} | \
+						samtools view -1 - >  {output}')
+		
 
 # if sample has more than one lane bam, then merge into one bam
 rule merge_bam:
@@ -203,25 +255,29 @@ rule downsample:
 
 # bam to bigwig
 # for UCSC visualization
-# normalize by CPM
 rule bam_to_bigWig:
 	input:
 		'downsample_bam/{sample}.q5.rmdup.ds.bam'
 	output:
+		no_TYR = 'downsample_bam/{sample}.q5.rmdup.ds.noTYRchr.bam',
 		bedgraph = temp('bigWig/{sample}.bG'),
 		bw = 'bigWig/{sample}.bw'
 	threads: 
 		16
 	shell:
 		"""
+		module load {config[samtools_version]}
 		module load {config[deeptools_version]}
 		module load ucsc
-		bamCoverage --bam {input} -o {output.bedgraph} \
+		# remove the mm10_TYR_enhancer_chr7_87538324_87543016
+		samtools view -h {input} | grep -v "mm10_TYR_enhancer_chr7_87538324_87543016" | samtools view -b > {output.no_TYR}
+		samtools index {output.no_TYR}
+		bamCoverage --bam {output.no_TYR} -o {output.bedgraph} \
 			--numberOfProcessors {threads} \
 			--binSize 10 \
 			--normalizeUsing RPGC \
 			--effectiveGenomeSize 2864785220 \
-			--ignoreForNormalization MT \
+			--ignoreForNormalization MT mm10_TYR_enhancer_chr7_87538324_87543016 \
 			--outFileFormat bedgraph
 		
 		sort -k1,1 -k2,2n {output.bedgraph} > {output.bedgraph}TEMP 
@@ -281,14 +337,16 @@ rule peak_calling:
 		peaks = 'macs_peak/{sample}_peaks.xls',
 		narrow_peaks = 'macs_peak/{sample}_peaks.narrowPeak',
 		summits = 'macs_peak/{sample}_summits.bed'
-	shell:
-		"""
-		module load {config[macs2_version]}
-		macs2 callpeak -f BAMPE -g "hs" -t {input} -q 0.01 \
-			--keep-dup all \
-			-n {wildcards.sample} \
-			--outdir macs_peak
-		"""
+	run:
+		if 'SRS' in wildcards.sample:
+			type = 'BAM'
+		else:
+			type = 'BAMPE'
+		shell("module load {config[macs2_version]}; \
+				macs2 callpeak -f " + type + " -g \"hs\" -t {input} -q 0.01 \
+				--keep-dup all \
+				-n {wildcards.sample} \
+				--outdir macs_peak")
 
 # Peak calling for GFP vs RFP and RFP vs iPSC
 # macs2
@@ -623,12 +681,14 @@ rule common_peaks_by_type:
 			bedtools intersect -a {input.merged} -b {input.union} -c -f 0.4 | awk '$7>1 {{print $0}}' > {output}T")
 		tsv = open(output[0] + 'T')
 		out = open(output[0], 'w')
-		if wildcards.cell_type == 'RFP':
+		if wildcards.cell_type == 'RFP_ATAC-Seq':
 			color = '255,0,0'
-		elif wildcards.cell_type == 'GFP':
+		elif wildcards.cell_type == 'GFP_ATAC-Seq':
 			color = '0,255,0'
-		else:
+		elif wildcards.cell_type == 'IPSC_ATAC-Seq':
 			color = '0,0,255'
+		else:
+			color = '255,255,255'
 		for line in tsv:
 			line = line.split()
 			line[3] = str(min(999, round(float(line[3])))) # round for bigBed, no more than 999
@@ -637,10 +697,11 @@ rule common_peaks_by_type:
 		tsv.close()
 		out.close()
 
-# further filter down common_peaks_by_type by overlapping with Smith .. Frazer iPSC-RPE h3k27Ac ChIP-Seq
-rule overlap_with_RPE_h3k27ac:
+# further filter down ATAC common_peaks_by_type by overlapping with h3k27Ac ChIP-Seq
+rule overlap_with_h3k27ac:
 	input:
 		atac = 'macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak',
+		ipsc_h3k27ac = 'macs_peak/IPSC_ChIP_h3k27ac_common_peaks.blackListed.narrowPeak',
 		rpe1 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_1.bed.gz',
 		rpe2 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_2.bed.gz',
 		rpe3 = '/home/mcgaugheyd/git/ipsc_rpe_atac/data/ipsc_rpe_h3k27ac_frazer_3.bed.gz',
@@ -656,12 +717,14 @@ rule overlap_with_RPE_h3k27ac:
 	output:
 		'macs_peak/{cell_type}_common_peaks.h3k27ac_intersect.blackListed.narrowPeak'
 	run:
-		if wildcards.cell_type == 'IPSC':
+		if wildcards.cell_type == 'IPSC_ATAC-Seq':
 			#shell("module load {config[bedtools_version]}; \
 			#		bedtools intersect -a {input.atac} -b <(zcat {input.ips1} {input.ips2} {input.ips3} | sort -k1,1 -k2,2n)  \
 			#		> {output}")
-			shell("cp {input.atac} {output}")
-		else:
+			shell("module load {config[bedtools_version]}; \
+					bedtools intersect -a {input.atac} -b {input.ipsc_h3k27ac} -c | \
+					awk '$13 > 2 {{print $0}}' > {output}")
+		elif wildcards.cell_type == 'GFP_ATAC-Seq' or wildcards.cell_type == 'RFP_ATAC-Seq':
 			shell("module load {config[bedtools_version]}; \
 					bedtools intersect -a {input.atac} -b <(zcat {input.rpe1} {input.rpe2} {input.rpe3} \
 					{input.rpe4} {input.rpe5} {input.rpe6} {input.rpe7} {input.rpe8} {input.rpe9} | sort -k1,1 -k2,2n) -c | \
@@ -889,7 +952,7 @@ rule label_with_TF_RNA_seq_expression:
 		gfp_vs_ipsc = '/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/GFP_vs_iPSC.results.csv',
 		gfp_vs_rfp = '/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/GFP_vs_RFP.results.csv'
 	run:
-		if wildcards.comparison == 'GFP__not__IPSC':
+		if wildcards.comparison == 'GFP_ATAC-Seq__not__IPSC_ATAC-Seq':
 			shell("module load {config[R_version]}; \
 			Rscript ~/git/ipsc_rpe_atac/src/match_TF_to_expression.R {input.homer_known} 'Name' {output.known} {params.gfp_vs_ipsc}; \
 			Rscript ~/git/ipsc_rpe_atac/src/match_TF_to_expression.R {input.homer_novel} 'Best Match/Details' {output.novel} {params.gfp_vs_ipsc}")
@@ -979,21 +1042,115 @@ rule TF_gene_network_R:
 		gfp_vs_ipsc_file = 'GFP_vs_iPSC.results.csv',
 		gfp_vs_rfp_file = 'GFP_vs_RFP.results.csv'
 	run:
-		if wildcards.comparison == 'GFP__not__IPSC':
+		if wildcards.comparison == 'GFP_ATAC-Seq__not__IPSC_ATAC-Seq':
 			shell("module load {config[R_version]}; \
 				cp ~/git/ipsc_rpe_atac/src/network_analysis.Rmd {params.folder}/network_analysis.Rmd; \
 				cp {params.gfp_vs_ipsc} {params.folder}/; \
 				Rscript -e \"rmarkdown::render('{params.folder}/network_analysis.Rmd', output_file = '{params.file}', output_dir = '{params.folder}', params = list(comparison_1 = 'GFP', comparison_2 = 'iPSC', expression = '{params.gfp_vs_ipsc_file}', datafile = '../../{input}'))\" ")
-		elif wildcards.comparison == 'GFP__not__RFP':
+		elif wildcards.comparison == 'GFP_ATAC-Seq__not__RFP_ATAC-Seq':
 			shell("module load {config[R_version]}; \
 				cp ~/git/ipsc_rpe_atac/src/network_analysis.Rmd {params.folder}/network_analysis.Rmd; \
 				cp {params.gfp_vs_rfp} {params.folder}/; \
 				Rscript -e \"rmarkdown::render('{params.folder}/network_analysis.Rmd', output_file = '{params.file}', output_dir = '{params.folder}', params = list(comparison_1 = 'GFP', comparison_2 = 'RFP', expression = '{params.gfp_vs_rfp_file}', datafile = '../../{input}'))\" ")
-		elif wildcards.comparison == 'RFP__not__GFP':
+		elif wildcards.comparison == 'RFP_ATAC-Seq__not__GFP_ATAC-Seq':
 			shell("module load {config[R_version]}; \
 				cp ~/git/ipsc_rpe_atac/src/network_analysis.Rmd {params.folder}/network_analysis.Rmd; \
 				cp {params.gfp_vs_rfp} {params.folder}/; \
 				Rscript -e \"rmarkdown::render('{params.folder}/network_analysis.Rmd', output_file = '{params.file}', output_dir = '{params.folder}', params = list(comparison_1 = 'RFP', comparison_2 = 'GFP', expression = '{params.gfp_vs_rfp_file}', datafile = '../../{input}'))\" ")
+
+
+# closest 10 TSS (within 1e6) for each peak
+rule closest_TSS_each_cell_type:
+	input:
+		bed = 'macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak',
+		tss = 'annotation/tss_hg19.bed'
+	output:
+		'macs_peak/{cell_type}_common_peaks.blackListed.closestTSS.narrowPeak'
+	shell:
+		"""
+		module load {config[bedtools_version]}
+		cat {input.bed} | grep -v mm10 | \
+			sort -k1,1 -k2,2n | \
+					closestBed -g <( sort -k1,1 -k2,2n {config[bwa_genome_sizes]} ) \
+						-k 10 -d -a - -b <( sort -k1,1 -k2,2n {input.tss} ) | \
+			gzip -f > {output}
+		"""
+
+# create CGM for GFP, RFP, iPSC
+rule make_CGM:
+	input:
+		atac = 'macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak',
+		atac_h3k27ac = 'macs_peak/{cell_type}_common_peaks.h3k27ac_intersect.blackListed.narrowPeak',
+	output:
+		atac_score = 'CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM_score.tsv',
+		atac_h3k27ac_score = 'CGM/{cell_type}_common_peaks.h3k27ac_intersect.blackListed.narrowPeak.CGM_score.tsv',
+		atac_count = 'CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM_count.tsv',
+		atac_h3k27ac_count = 'CGM/{cell_type}_common_peaks.h3k27ac_intersect.blackListed.narrowPeak.CGM_count.tsv'
+	params:
+		value_column = 4
+	shell:
+		"""
+		module load R
+		module load bedtools
+		bash ~/git/CGM/./matrix_maker.sh {config[gtf_file]} {input.atac} {output.atac_score} {params.value_column}
+		bash ~/git/CGM/./matrix_maker.sh {config[gtf_file]} {input.atac} {output.atac_count}
+		bash ~/git/CGM/./matrix_maker.sh {config[gtf_file]} {input.atac_h3k27ac} {output.atac_h3k27ac_score} {params.value_column}
+		bash ~/git/CGM/./matrix_maker.sh {config[gtf_file]} {input.atac_h3k27ac} {output.atac_h3k27ac_count}
+		"""
+
+# create punctate chromatin differences report
+# TF_gene_network.R does a broad (1mb) search for diff open regions around a gene
+rule TF_gene_punctate_R:
+	input:
+		'peak_full/homer_{comparison}/{peak_type}/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz', 
+		'/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line.tsv', # expression
+		'CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM.tsv' # CGM
+	output:
+		'bloop'
+	shell:
+		"""
+		echo woo
+		"""
+
+# take gene lists from TF_gene_punctate_R
+# and do HOMER TFBS enrichment tests
+#localrules: homer_TFBS
+rule homer_TFBS:
+	input:
+		bed = 'macs_peak/{cell_type}_common_peaks.blackListed.closestTSS.narrowPeak',
+		summit = 'macs_peak/{cell_type}_summits.bed'
+	output:
+		homer_in = '{cell_type}_woo',
+		homer_out = directory('{cell_type}_homer_unique_peaks_test')
+	params:
+		out_dir = '{cell_type}_homer_unique_peaks_test'
+	threads:
+		8
+	shell:
+		"""
+		module load {config[bedtools_version]}
+		module load {config[homer_version]}
+		
+		# peaks within 1000bp
+		zcat {input.bed} | awk '$NF < 1000 {{print $0}}' | grep -f {input.gene_list} - | \
+			cut -f1,2,3 | sort -k1,1 -k2,2n | uniq | \
+			bedtools intersect -a - -b {input.summit} -wb > {output.homer_in}
+		findMotifsGenome.pl {output.homer_in} hg19 {params.out_dir} -p {threads} -size 100 -preparsedDir homer_preparsed/
+		"""
+
+# compute read coverage across reference point
+rule computeMatrix:
+	input:
+		bigWig = lambda wildcards: expand('bigWig/{sample}.bw', sample = TYPE_SAMPLE[wildcards.cell_type]), 
+		region = config['gtf_file']
+	output:
+		'computeMatrix/{cell_type}.matrix.gz'
+	threads: 16
+	shell:
+		"""
+		module load {config[deeptools_version]}
+		computeMatrix reference-point -p {threads} -S {input.bigWig} -R {input.region} -b 10000 -a 10000 -o {output}
+		"""
 
 # compute read coverage across common  peaks 
 rule multiBamSummary:
@@ -1069,4 +1226,5 @@ rule ucsc_view_homer_motifs:
 		cp -f {params.base_path}{input}.bb {output}
 		rm {input}TEMP
 		"""
+
 

@@ -71,5 +71,11 @@
 		"partition" : "norm",
 		"time" : "12:00:00",
 		"mem" : "32G"
+	},
+	"computeMatrix" :
+	{
+		"partition" : "norm",
+		"time" : "12:00:00",
+		"mem" : "32G"
 	}
 }
