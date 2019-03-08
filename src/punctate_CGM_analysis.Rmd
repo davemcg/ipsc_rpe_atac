@@ -55,7 +55,7 @@ Not using the h3k27ac intersection for this comparison, as the iPSC h3k27ac ChIP
 
 Narrowing in on promoter region (1000bp) with ATAC score > 100 (GSX2 has a peak score of 105 within 1000bp of TSS)
 
-## GFP - iPSC: Higher Score in TSS (> 100), Higher gene expression (>=2X or more GFP/iPSC)
+## 1. GFP - iPSC: Higher Score in TSS (> 100), Higher gene expression (>=2X or more GFP/iPSC)
 ```{r, fig.height=11, fig.width=4}
 delta_cgm <- (cgm_gfp_score %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
   (cgm_ipsc_score %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Value:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
@@ -95,7 +95,7 @@ expression_heatmap <- punctate_upstream %>% select(`log2(TPM+1)`) %>%
 atac_heatmap + expression_heatmap
 ```
 
-## GFP - iPSC: Higher Score in TSS (> 100), less gene expression (-2X or more GFP/iPSC)
+## 2. GFP - iPSC: Higher Score in TSS (> 100), less gene expression (-2X or more GFP/iPSC)
 ```{r, fig.height=6, fig.width=4}
 delta_cgm <- (cgm_gfp_score %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
   (cgm_ipsc_score %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Value:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
@@ -135,7 +135,7 @@ expression_heatmap <- punctate_upstream %>% select(`log2(TPM+1)`) %>%
 atac_heatmap + expression_heatmap
 ```
 
-## GFP - iPSC: Lower Score in TSS (< -100), higher gene expression (2X or more GFP/iPSC)
+## 3. GFP - iPSC: Lower Score in TSS (< -100), higher gene expression (2X or more GFP/iPSC)
 ```{r, fig.height=9, fig.width=4}
 delta_cgm <- (cgm_gfp_score %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
   (cgm_ipsc_score %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Value:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
@@ -175,7 +175,7 @@ expression_heatmap <- punctate_upstream %>% select(`log2(TPM+1)`) %>%
 atac_heatmap + expression_heatmap
 ```
 
-## GFP - iPSC: Lower Score in TSS (< -100), lower gene expression (-2X or more GFP/iPSC)
+## 4. GFP - iPSC: Lower Score in TSS (< -100), lower gene expression (-2X or more GFP/iPSC)
 ```{r, fig.height=12, fig.width=4}
 delta_cgm <- (cgm_gfp_score %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
   (cgm_ipsc_score %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>% select(Exon_Value:Gene_length, `log2(TPM+1)`)) %>% as.tibble()
@@ -223,7 +223,7 @@ Modified approach from `trends.Rmd` where the filtering is based upon evaluating
   - Within 100,000bp
   - (Not using the entire region)
 
-## GFP - RFP: Higher Peak Score (1000bp > 30 or 100k > 200) and Higher Expression (>0.5 log2(TPM) GFP - RFP)
+## 5. GFP - RFP: Higher Peak Score (1000bp > 30 or 100k > 200) and Higher Expression (>0.5 log2(TPM) GFP - RFP)
 **WITH h3k27ac Intersection**
 
 0.5 log(TPM+1) delta set as GSX2 is just over 0.5 log2(TPM+1) overexpressed GFP - RFP
@@ -281,7 +281,7 @@ atac_heatmap + region_heatmap + expression_heatmap
 
 ```
 
-## GFP - RFP: Higher Peak Score (1000bp > 30 or 100k > 200) and Lower Expression (< -0.5 log2(TPM) GFP - RFP)
+## 6. GFP - RFP: Higher Peak Score (1000bp > 30 or 100k > 200) and Lower Expression (< -0.5 log2(TPM) GFP - RFP)
 Notice how there are fewer...which is good, as ATAC + h3k27Ac is a canonical "activation" signal
 ```{r, fig.height=3, fig.width=4}
 delta_cgm <- (cgm_gfp_h3k27ac_value %>% mutate(`log2(TPM+1)` = log2(lsTPM+1)) %>%  select(Exon_Value:Gene_length, `log2(TPM+1)`)) - 
@@ -337,7 +337,7 @@ atac_heatmap + region_heatmap + expression_heatmap
 
 ```
 
-## GFP - RFP: Lower Peak Score (1000bp < -30 or 100k < -200) and Higher Expression (>1 log2(TPM) GFP - RFP)
+## 7. GFP - RFP: Lower Peak Score (1000bp < -30 or 100k < -200) and Higher Expression (>1 log2(TPM) GFP - RFP)
 
 I've increased the stringency for log2(TPM+1) change from 0.5 to 1, as there are way too many results.
 ```{r, fig.height=6, fig.width=4}
@@ -394,7 +394,7 @@ atac_heatmap + region_heatmap + expression_heatmap
 
 ```
 
-## GFP - RFP: Lower Peak Score (1000bp < -30 or 100k < -200) and Lower Expression (< -1 log2(TPM) GFP - RFP)
+## 8. GFP - RFP: Lower Peak Score (1000bp < -30 or 100k < -200) and Lower Expression (< -1 log2(TPM) GFP - RFP)
 
 I've increased the stringency for log2(TPM+1) change from 0.5 to 1, as there are way too many results.
 ```{r, fig.height=3, fig.width=4}
