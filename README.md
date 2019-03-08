@@ -18,4 +18,4 @@ Outputs:
 6. FASTQC of bams
 7. Reads per sample
 
-![](snakemake.svg)
+![](rpe_ipsc_ATAC_dag.svg)
