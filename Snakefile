@@ -94,14 +94,14 @@ wildcard_constraints:
 
 rule all:
 	input:
-		expand('homer/{cell_type}_{num}_homer_TFBS_run', cell_type = ['GFP_ATAC-Seq'], num = [1,2,3,4,5,6,7,8]),
-		expand('macs_peak/{cell_type}_common_peaks.blackListed.closestTSS.narrowPeak', cell_type = ['GFP_ATAC-Seq']),
-		expand('computeMatrix/{cell_type}.matrix.gz', cell_type = ['IPSC_ChIP_h3k27ac','GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
-		expand('CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM_score.tsv', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
+		expand('homer/{cell_type}_{num}_homer_TFBS_run/knownResults_{num}.html', cell_type = ['GFP_ATAC-Seq'], num = [1,2,3,4,5,6,7,8]),
+	#	expand('macs_peak/{cell_type}_common_peaks.blackListed.closestTSS.narrowPeak', cell_type = ['GFP_ATAC-Seq']),
+	#	expand('computeMatrix/{cell_type}.matrix.gz', cell_type = ['IPSC_ChIP_h3k27ac','GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
+	#	expand('CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM_score.tsv', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
 	#	expand('macs_peak/{cell_type}_common_peaks.h3k27ac_intersect.blackListed.narrowPeak', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq'])
 	#	expand('fastq/{SRA_runs}_pass.fastq.gz', SRA_runs = [x for x in list(itertools.chain.from_iterable(SAMPLE_RUN.values()))]),
 		#expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}.bw', sample = list(SAMPLE_PATH.keys())),
-		#expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}_peaks.blackListed.hg19.narrowPeak.bb', sample = list(SAMPLE_PATH.keys())),
+		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}_peaks.blackListed.hg19.narrowPeak.bb', sample = list(SAMPLE_PATH.keys())),
 		#'deeptools/multiBamSummary.npz',
 		#'deeptools/multiBamSummary.tsv',
 		#'metrics/reads_by_sample.txt',
@@ -110,7 +110,7 @@ rule all:
 		#expand('msCentipede/closest_TSS/{cell_type}.{motif}.closestTSS.dat.gz', cell_type = list(TYPE_SAMPLE.keys()), motif = config['motif_IDs']),
 		#expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{motif}.union.HQ.pretty.bb', motif = config['motif_IDs']),
 		'/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_peaks.blackListed.narrowPeak.bb',
-		#'/data/mcgaugheyd/datashare/hufnagel/hg19/interesting_homer_motif.bb',
+		'/data/mcgaugheyd/datashare/hufnagel/hg19/interesting_homer_motif.bb',
 		#expand('homer_unique_peaks_{comparison}/{peak_type}/homerResults.html', comparison = config['peak_comparison_pair'], peak_type = ['all','enhancers','promoters']), 
 	#	expand('network_reports/{comparison}_{peak_type}/{comparison}_{peak_type}_networkAnalysis.html', comparison = config['peak_comparison_pair'], peak_type = ['all','enhancers','promoters']),
 	#	expand('CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM.tsv', cell_type = list(TYPE_SAMPLE.keys()))
@@ -1105,7 +1105,7 @@ rule TF_gene_punctate_R:
 	input:
 		#'peak_full/homer_{comparison}/{peak_type}/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz', 
 		'/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line.tsv', # expression
-		expand('CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM.tsv', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq'])# CGM
+		expand('CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM_score.tsv', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq'])# CGM
 	output:
 		'punctate/punctate_analysis_{num}.txt'
 	shell:
@@ -1124,9 +1124,11 @@ rule homer_TFBS:
 		summit = 'macs_peak/{cell_type}_summits.bed'
 	output:
 		homer_in = '{cell_type}_{num}_common_peaks.blackListed.closestTSS.narrowPeak.summits',
-		homer_out = directory('homer/{cell_type}_{num}_homer_TFBS_run')
+		#homer_out = directory('homer/{cell_type}_{num}_homer_TFBS_run'),
+		known = 'homer/{cell_type}_{num}_homer_TFBS_run/knownResults_{num}.html'
 	params:
-		out_dir = 'homer/{cell_type}_{num}_homer_TFBS_run'
+		out_dir = 'homer/{cell_type}_{num}_homer_TFBS_run',
+		known = 'homer/{cell_type}_{num}_homer_TFBS_run/knownResults.html'
 	threads:
 		8
 	shell:
@@ -1139,6 +1141,7 @@ rule homer_TFBS:
 			cut -f1,2,3 | sort -k1,1 -k2,2n | uniq | \
 			bedtools intersect -a - -b {input.summit} -wb > {output.homer_in}
 		findMotifsGenome.pl {output.homer_in} hg19 {params.out_dir} -p {threads} -size 100 -preparsedDir homer_preparsed/
+		cp {params.known} {output.known}
 		"""
 
 # compute read coverage across reference point
@@ -1192,7 +1195,7 @@ rule ucsc_view_bigWig:
 	shell:
 		"""
 		module load ucsc
-		cut -f1,2,3,4 {input.bed} | sort -k1,1 -k2,2n > {input.bed}TEMP 
+		cut -f1,2,3,4 {input.bed} | grep -v mm10_TYR_enhancer_chr7_87538324_87543016 | sort -k1,1 -k2,2n > {input.bed}TEMP 
 		bedToBigBed {input.bed}TEMP /data/mcgaugheyd/genomes/hg19/hg19.chrom.sizes {input.bed}.bb
 		ln -s  {params.base_path}{input.bed}.bb {output.bigBed}
 		ln -s {params.base_path}{input.bigWig} {output.bigWig}
