@@ -1,16 +1,4 @@
-Two things to do:
-GFP vs iPSC comparison
-Look for genes where (even though overall chromatin is closing) there are some (close to TSS) peaks opening in GFP
-Idea is that because iPSC is overall more open, a lot of regions with “punctate” chromatin changes are being ignored
-  i.      E.g. gsx2
-Compare genes with expression changes (bulk RNA-seq)
-iPSC -> RFP -> GFP
-correlate with “chromatin openness/closingness” (peak changes)
-Identify genes where the chromatin changes are consistent iPSC -> RFP -> GFP
-Then in those differential peak areas, see what TFBS are in them
-4 groups of TFs tagged to genes changing expression/chromatin changes
-  i.      Gene expression decreasing, #TFBS chromatin opening
-  ii.      Gene expression decreasing, #TFBS chromatin closing
-  iii.      Gene expression increasing, #TFBS chromatin opening
-  iv.      Gene expression increasing, #TFBS chromatin closing
-Idea is to identify good TF targets for lentiviral knockdown or overexpression to turn on/off GFP
+New analysis thoughts:
+  - merge punctate analysis with network report
+  - e.g. add network analyses to punctate?
+  - need to propose some experimental / thoughts to huf
