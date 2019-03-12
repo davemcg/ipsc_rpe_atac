@@ -39,18 +39,31 @@ peak_gfp_ipsc <- read_tsv('peak_full/homer_GFP_ATAC-Seq__not__IPSC_ATAC-Seq/all/
 peak_gfp_rfp <- read_tsv('peak_full/homer_GFP_ATAC-Seq__not__RFP_ATAC-Seq/all/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif__GFP_ATAC-Seq__not__RFP_ATAC-SeqIntersection.bed.gz', col_names = F)
 peak_rfp_ipsc <- read_tsv('peak_full/homer_RFP_ATAC-Seq__not__IPSC_ATAC-Seq/all/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif__RFP_ATAC-Seq__not__IPSC_ATAC-SeqIntersection.bed.gz', col_names = F)
 
-expression %>% filter(Gene %in% (known_rfp_ipsc %>% filter(`log P-pvalue` < -1000) %>% filter(Name %in% (known_gfp_ipsc %>% filter(`log P-pvalue` < -1000) %>% pull(Name))) %>% pull(Gene))) %>% data.frame() %>% arrange(Gene, Line)
+# expression %>% filter(Gene %in% (known_rfp_ipsc %>% filter(`log P-pvalue` < -1000) %>% filter(Name %in% (known_gfp_ipsc %>% filter(`log P-pvalue` < -1000) %>% pull(Name))) %>% pull(Gene))) %>% data.frame() %>% arrange(Gene, Line)
 
 expression_gfp_ipsc <- read_csv('~/git/ipsc_rpe_RNA-seq/data/GFP_vs_iPSC.results.csv')
 expression_gfp_rfp <- read_csv('~/git/ipsc_rpe_RNA-seq/data/GFP_vs_RFP.results.csv')
 expression_rfp_ipsc <- read_csv('~/git/ipsc_rpe_RNA-seq/data/RFP_vs_iPSC.results.csv')
+expression_rpe_ipsc <- read_csv('~/git/ipsc_rpe_RNA-seq/data/RPE_vs_iPSC.results.csv')
 
+expression <- read_tsv('~/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line.tsv')
 
-top_motifs_rpe_ipsc <- known_rfp_ipsc %>% filter(`log P-pvalue` < -1000) %>% filter(Name %in% (known_gfp_ipsc %>% filter(`log P-pvalue` < -1000) %>% pull(Name))) %>% pull(Gene)
-top_motifs_gfp_rfp <- known_gfp_rfp %>% filter(`log P-pvalue` < -100) %>%  pull(Gene)
+top_motifs_rpe_ipsc <- known_rfp_ipsc %>% filter(`log P-pvalue` < -1000) %>% filter(Name %in% (known_gfp_ipsc %>% filter(`log P-pvalue` < -1000) %>% pull(Name)))
+top_motifs_gfp_rfp <- known_gfp_rfp %>% filter(`log P-pvalue` < -100) 
 
+```
 
+# Top TFBS that are highly enriched in both GFP and RFP compared to iPSC
+```{r}
+top_motifs_rpe_ipsc %>% select(Rank:RFP) %>% left_join(expression_rpe_ipsc) %>% DT::datatable()
+```
 
+# Top TFBS that are highly enriched in both GFP compared to RFP
+```{r}
+top_motifs_gfp_rfp %>% select(Rank:RFP) %>% left_join(expression_gfp_rfp) %>% DT::datatable()
+```
+
+```{r}
 tf_gene <- read_csv('~/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line_with_Diff_Exp.tsv')
 
 colnames(peak_gfp_ipsc) <- c('chrom','start','stop','type','macs2_score','strand','thickStart','thickStop','RGB','Distance_to_Gene','Gene','Description','chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
