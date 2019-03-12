@@ -94,25 +94,25 @@ wildcard_constraints:
 
 rule all:
 	input:
-		expand('homer/{cell_type}_{num}_homer_TFBS_run', cell_type = ['GFP_ATAC-Seq'], num = [1,2,3,4,5,6,7,8]),
-		expand('macs_peak/{cell_type}_common_peaks.blackListed.closestTSS.narrowPeak', cell_type = ['GFP_ATAC-Seq']),
-		expand('computeMatrix/{cell_type}.matrix.gz', cell_type = ['IPSC_ChIP_h3k27ac','GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
-		expand('CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM_score.tsv', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
+		expand('homer/{cell_type}_{num}_homer_TFBS_run/knownResults_{num}.html', cell_type = ['GFP_ATAC-Seq'], num = [1,2,3,4,5,6,7,8]),
+	#	expand('macs_peak/{cell_type}_common_peaks.blackListed.closestTSS.narrowPeak', cell_type = ['GFP_ATAC-Seq']),
+	#	expand('computeMatrix/{cell_type}.matrix.gz', cell_type = ['IPSC_ChIP_h3k27ac','GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
+	#	expand('CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM_score.tsv', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
 	#	expand('macs_peak/{cell_type}_common_peaks.h3k27ac_intersect.blackListed.narrowPeak', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq'])
 	#	expand('fastq/{SRA_runs}_pass.fastq.gz', SRA_runs = [x for x in list(itertools.chain.from_iterable(SAMPLE_RUN.values()))]),
 		#expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}.bw', sample = list(SAMPLE_PATH.keys())),
-		#expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}_peaks.blackListed.hg19.narrowPeak.bb', sample = list(SAMPLE_PATH.keys())),
+		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}_peaks.blackListed.hg19.narrowPeak.bb', sample = list(SAMPLE_PATH.keys())),
 		#'deeptools/multiBamSummary.npz',
 		#'deeptools/multiBamSummary.tsv',
 		#'metrics/reads_by_sample.txt',
-		#'fastqc/multiqc/multiqc_report.html',
+		'fastqc/multiqc/multiqc_report.html',
 	#	expand('downsample_bam/{sample}.q5.rmdup.ds.bam', sample = list(SAMPLE_PATH.keys())),
 		#expand('msCentipede/closest_TSS/{cell_type}.{motif}.closestTSS.dat.gz', cell_type = list(TYPE_SAMPLE.keys()), motif = config['motif_IDs']),
 		#expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{motif}.union.HQ.pretty.bb', motif = config['motif_IDs']),
 		'/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_peaks.blackListed.narrowPeak.bb',
-		#'/data/mcgaugheyd/datashare/hufnagel/hg19/interesting_homer_motif.bb',
+		'/data/mcgaugheyd/datashare/hufnagel/hg19/interesting_homer_motif.bb',
 		#expand('homer_unique_peaks_{comparison}/{peak_type}/homerResults.html', comparison = config['peak_comparison_pair'], peak_type = ['all','enhancers','promoters']), 
-	#	expand('network_reports/{comparison}_{peak_type}/{comparison}_{peak_type}_networkAnalysis.html', comparison = config['peak_comparison_pair'], peak_type = ['all','enhancers','promoters']),
+		expand('network_reports/{comparison}_{peak_type}/{comparison}_{peak_type}_networkAnalysis.html', comparison = config['peak_comparison_pair'], peak_type = ['all','enhancers','promoters']),
 	#	expand('CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM.tsv', cell_type = list(TYPE_SAMPLE.keys()))
 
 rule pull_lane_fastq_from_nisc_or_sra:
@@ -422,137 +422,6 @@ rule build_tss_regions:
 		"""
 
 
-rule download_HOCOMOCO_meme:
-	output:
-		'meme_pwm/HOCOMOCOv11_core_HUMAN_mono_meme_format.meme'
-	shell:
-		"""
-		wget http://hocomoco11.autosome.ru/final_bundle/hocomoco11/core/HUMAN/mono/HOCOMOCOv11_core_HUMAN_mono_meme_format.meme -P meme_pwm
-		"""
-
-rule merge_HOCOMOCO_cisbp_jolma:
-	input:
-		'meme_pwm/HOCOMOCOv11_core_HUMAN_mono_meme_format.meme'
-	output:
-		'meme_pwm/HOCOMOCOv11_core_HUMAN_mono_meme_format__cisBP__jolma.meme'
-	run:
-		shell("tail -n +10 /fdb/meme/motif_databases/EUKARYOTE/jolma2013.meme > jolma")
-		shell("tail -n +10 /fdb/meme/motif_databases/CIS-BP/Homo_sapiens.meme > cisbp")
-		file = open('cisbp')
-		out_cis = open('out_cis', 'w')
-		for line in file:
-			if 'MOTIF' in line[0:10]:
-				line = line.split()
-				out_cis.write(line[0] + '\t' + line[1] + '__' + line[2] + '\n')
-			else:
-				out_cis.write(line)
-		file.close()
-		out_cis.close()
-		shell("cat {input} out_cis jolma > {output}")
-		shell("rm cisbp; rm out_cis; rm jolma")
-
-# fimo calls motifs over a ~1e-5 threshold (based on background A-G-C-T rates)	
-rule call_motifs:
-	input:
-		fasta = config['genome'],
-		meme_file = 'meme_pwm/HOCOMOCOv11_core_HUMAN_mono_meme_format__cisBP__jolma.meme'
-	output:
-		'fimo_motifs/{motif}/meme.fimo.dat.gz'
-	shell:
-		"""
-		module load {config[meme_version]}
-		fimo --thresh 0.001 --no-qvalue  --text --parse-genomic-coord --motif {wildcards.motif} {input.meme_file} {input.fasta} | gzip -f > {output}
-		"""	
-
-rule reformat_motifs:
-	input:
-		'fimo_motifs/{motif}/meme.fimo.dat.gz'
-	output:
-		header = ('fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.HEADER'),
-		body = ('fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.BODY'),
-		intermediate = ('fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.INTERMEDIATE'),
-		ready = 'fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.dat.gz'
-	shell:
-		"""
-		module load samtools; # || true
-		# only keep top 10,000 scoring motifs for msCentipede
-		printf "Chr\tStart\tStop\tStrand\tPwmScore\n" > {output.header}
-		zcat {input} | tail -n +2 | sort -k6,6nr | cut -f3,4,5,6,7 | head -n 10005 | sort -k1,1 -k2,2n > {output.body} || true
-		cat {output.header} {output.body} > {output.intermediate} || true
-		bgzip -fc {output.intermediate} > {output.ready} || true
-		"""
-
-# select parameters to optimize msCentipede ID of TFBS
-# use replicates for each cell type
-rule msCentipede_learn:
-	input:
-		motifs = 'fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.dat.gz',
-		atac_bams = lambda wildcards: expand('merged_bam_HQ/{sample}.q5.rmdup.bam', sample = TYPE_SAMPLE[wildcards.cell_type]),
-	output:
-		model = 'msCentipede/{cell_type}/{motif}.model'
-	shell:
-		"""
-		module load {config[msCentipede_version]}
-		call_binding.py --task learn {input.motifs} {input.atac_bams} \
-			--protocol ATAC_seq \
-			--model_file {output.model} \
-			--mintol 1e-2 \
-			--log_file msCentipede/{wildcards.cell_type}/{wildcards.motif}.learn.logfile 
-		"""
-
-# ID TFBS
-rule msCentipede_infer:
-	input:
-		motifs = 'fimo_motifs/{motif}/meme.fimo.reformatted_for_msCentipede.dat.gz',
-		atac_bams = lambda wildcards: expand('merged_bam_HQ/{sample}.q5.rmdup.bam', sample = TYPE_SAMPLE[wildcards.cell_type]),
-		model = 'msCentipede/{cell_type}/{motif}.model'
-	output:
-		posterior = 'msCentipede/{cell_type}/{motif}.posterior'
-	shell:
-		"""
-		module load {config[msCentipede_version]}
-		call_binding.py --task infer {input.motifs} {input.atac_bams} \
-			--protocol ATAC_seq \
-			--model_file {input.model} \
-			--posterior_file {output.posterior} \
-			--log_file msCentipede/{wildcards.cell_type}/{wildcards.motif}.infer.logfile 
-		"""
-
-# retain highest quality hits, and return as bed
-# also only keep one that overlap macs peaks
-# https://github.com/rajanil/msCentipede/issues/11
-# One suggested set of conditions to select the most likely bound sites is
-# LogPosOdds > 2 AND MultLikeRatio > 1 AND NegBinLikeRatio > 1 .
-# LogPosOdds is the log of the posterior odds that the TF is bound. (LogPosOdds > 2 is equivalent to the binding posterior > 0.99)
-# MultLikeRatio is the log likelihood ratio for the cleavage profile model.
-# NegBinLikeRatio is the log likelihood ratio for the total chromatin accessibility model.
-# (all logs are base 10)
-rule msCentipede_motif_HQ:
-	input:
-		peaks = 'macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak',
-		tfbs = 'msCentipede/{cell_type}/{motif}.posterior'
-	output:
-		'msCentipede/{cell_type}/{motif}.posterior.HQ.tsv'
-	shell:
-		"""
-		module load bedtools
-		zcat {input.tfbs} | \
-			awk -v s="{wildcards.cell_type}" -v m="{wildcards.motif}" '$5>2 && $7>1 && $8>1 {{print $0, "\t"s"_"m}}'| \
-			cut -f1,2,3,4,5,9 | \
-			tail -n +2 | \
-			bedtools intersect -a - -b {input.peaks} > {output} 
-		"""
-
-# merge TFBS found by motifs
-rule msCentipede_cat_by_motif:
-	input:
-		expand('msCentipede/{cell_type}/{{motif}}.posterior.HQ.tsv', cell_type = list(TYPE_SAMPLE.keys())) 
-	output:
-		'msCentipede/motif_cat/{motif}.posterior.HQ.tsv'
-	shell:
-		"""
-		cat {input} | sort -k1,1 -k2,2n > {output}
-		"""
 
 # find closest TSS/transcript to each TFBS
 # finds 10 closest (-k 10)
@@ -1105,7 +974,7 @@ rule TF_gene_punctate_R:
 	input:
 		#'peak_full/homer_{comparison}/{peak_type}/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz', 
 		'/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line.tsv', # expression
-		expand('CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM.tsv', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq'])# CGM
+		expand('CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM_score.tsv', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq'])# CGM
 	output:
 		'punctate/punctate_analysis_{num}.txt'
 	shell:
@@ -1124,9 +993,11 @@ rule homer_TFBS:
 		summit = 'macs_peak/{cell_type}_summits.bed'
 	output:
 		homer_in = '{cell_type}_{num}_common_peaks.blackListed.closestTSS.narrowPeak.summits',
-		homer_out = directory('homer/{cell_type}_{num}_homer_TFBS_run')
+		#homer_out = directory('homer/{cell_type}_{num}_homer_TFBS_run'),
+		known = 'homer/{cell_type}_{num}_homer_TFBS_run/knownResults_{num}.html'
 	params:
-		out_dir = 'homer/{cell_type}_{num}_homer_TFBS_run'
+		out_dir = 'homer/{cell_type}_{num}_homer_TFBS_run',
+		known = 'homer/{cell_type}_{num}_homer_TFBS_run/knownResults.html'
 	threads:
 		8
 	shell:
@@ -1139,6 +1010,7 @@ rule homer_TFBS:
 			cut -f1,2,3 | sort -k1,1 -k2,2n | uniq | \
 			bedtools intersect -a - -b {input.summit} -wb > {output.homer_in}
 		findMotifsGenome.pl {output.homer_in} hg19 {params.out_dir} -p {threads} -size 100 -preparsedDir homer_preparsed/
+		cp {params.known} {output.known}
 		"""
 
 # compute read coverage across reference point
@@ -1192,7 +1064,7 @@ rule ucsc_view_bigWig:
 	shell:
 		"""
 		module load ucsc
-		cut -f1,2,3,4 {input.bed} | sort -k1,1 -k2,2n > {input.bed}TEMP 
+		cut -f1,2,3,4 {input.bed} | grep -v mm10_TYR_enhancer_chr7_87538324_87543016 | sort -k1,1 -k2,2n > {input.bed}TEMP 
 		bedToBigBed {input.bed}TEMP /data/mcgaugheyd/genomes/hg19/hg19.chrom.sizes {input.bed}.bb
 		ln -s  {params.base_path}{input.bed}.bb {output.bigBed}
 		ln -s {params.base_path}{input.bigWig} {output.bigWig}
