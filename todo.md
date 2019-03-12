@@ -14,11 +14,11 @@ ipsc -------> GFP
 
 Data we have:
 
-iPSC / GFP / RFP
+	- iPSC / GFP / RFP
 
-	- RNA-seq (bulk)
-	- scRNA-seq for iPSC and GFP/RFP
-	- ATAC-seq
+		- RNA-seq (bulk)
+		- scRNA-seq for iPSC and GFP/RFP
+		- ATAC-seq
 	
 External:
 
