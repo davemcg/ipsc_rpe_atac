@@ -55,7 +55,10 @@ top_motifs_gfp_rfp <- known_gfp_rfp %>% filter(`log P-pvalue` < -100)
 
 # Top TFBS that are highly enriched in both GFP and RFP compared to iPSC
 ```{r}
-top_motifs_rpe_ipsc %>% select(Rank:RFP) %>% left_join(expression_rpe_ipsc) %>% DT::datatable()
+top_motifs_rpe_ipsc %>% mutate(Gene = case_when(grepl('^FRA', Gene) ~ gsub('FRA', 'FOSL', Gene),
+                                                grepl('AP1', Gene) ~ 'JUN',
+                                              TRUE ~ Gene)) %>%  
+  select(Rank:RFP) %>% left_join(expression_rpe_ipsc) %>% DT::datatable()
 ```
 
 # Top TFBS that are highly enriched in both GFP compared to RFP
