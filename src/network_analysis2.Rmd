@@ -36,14 +36,14 @@ known_gfp_rfp <- read_tsv('homer_unique_peaks_GFP_ATAC-Seq__not__RFP_ATAC-Seq/al
 known_rfp_ipsc <- read_tsv('homer_unique_peaks_RFP_ATAC-Seq__not__IPSC_ATAC-Seq/all/knownResults_matched_with_RNAseq.tsv')
 
 peak_gfp_ipsc <- read_tsv('peak_full/homer_GFP_ATAC-Seq__not__IPSC_ATAC-Seq/all/common_peaks.blackListed.narrowPeak__all_homer_motif.bed.gz', col_names = F) %>% 
-  select(X1:X4, X14:X19)
-colnames(peak_gfp_ipsc) <- c('chrom','start','stop','peak_score','chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
+  select(X1:X4, X24, X25, X23, X26:X31)
+colnames(peak_gfp_ipsc) <- c('chrom','start','stop','peak_score', 'Gene', 'Description', 'Distance_TSS_peak', 'chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
 peak_gfp_rfp <- read_tsv('peak_full/homer_GFP_ATAC-Seq__not__RFP_ATAC-Seq/all/common_peaks.blackListed.narrowPeak__all_homer_motif.bed.gz', col_names = F) %>% 
-  select(X1:X4, X14:X19)
-colnames(peak_gfp_rfp) <- c('chrom','start','stop','peak_score','chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
+  select(X1:X4, X24, X25, X23, X26:X31)
+colnames(peak_gfp_rfp) <- c('chrom','start','stop','peak_score', 'Gene', 'Description', 'Distance_TSS_peak', 'chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
 peak_rfp_ipsc <- read_tsv('peak_full/homer_RFP_ATAC-Seq__not__IPSC_ATAC-Seq/all/common_peaks.blackListed.narrowPeak__all_homer_motif.bed.gz', col_names = F) %>% 
-  select(X1:X4, X14:X19)
-colnames(peak_rfp_ipsc) <- c('chrom','start','stop','peak_score','chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
+  select(X1:X4, X24, X25, X23, X26:X31)
+colnames(peak_rfp_ipsc) <- c('chrom','start','stop','peak_score', 'Gene', 'Description', 'Distance_TSS_peak', 'chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
 
 # expression %>% filter(Gene %in% (known_rfp_ipsc %>% filter(`log P-pvalue` < -1000) %>% filter(Name %in% (known_gfp_ipsc %>% filter(`log P-pvalue` < -1000) %>% pull(Name))) %>% pull(Gene))) %>% data.frame() %>% arrange(Gene, Line)
 
@@ -63,7 +63,7 @@ top_motifs_gfp_rfp <- known_gfp_rfp %>% filter(`log P-pvalue` < -100)
 ```{r}
 top_motifs_rpe_ipsc %>% mutate(Gene = case_when(grepl('^FRA', Gene) ~ gsub('FRA', 'FOSL', Gene),
                                                 grepl('AP1', Gene) ~ 'JUN',
-                                              TRUE ~ Gene)) %>%  
+                                                TRUE ~ Gene)) %>%  
   select(Rank:RFP) %>% left_join(expression_rpe_ipsc) %>% DT::datatable()
 ```
 
@@ -77,47 +77,149 @@ top_motifs_gfp_rfp %>% select(Rank:RFP) %>% left_join(expression_gfp_rfp) %>% DT
 colnames(peak_gfp_ipsc) <- c('chrom','start','stop','size','macs2_score','strand','thickStart','thickStop','RGB','Distance_to_Gene','Gene','Description','space', 'chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
 
 # create gene centric info on peak/motif and differential gene expression iPSC <-> RPE
-grouped_stats <- list()
-
-for (i in top_motifs_rpe_ipsc$Motif){
-  out <- peak %>% 
-    filter(!is.na(Gene)) %>% # remove NA genes where the peak didn't get a match (no genes within 500kb of a peak)
-    filter(motif == i) %>% # only retain the motif TFBS homer hits
-    group_by(type, chrom, start, stop, Gene) %>% # group by GFP/RFP,iPSC, the macs2 peak, and the gene
-    summarise(Num_TFBS_motifs=n()) %>%  # count total number of motifs
-    group_by(type, Gene) %>% # group now by GFP/RFP/IPSC and gene
-    summarise(Total_TFBS_motifs = sum(Num_TFBS_motifs), Num_Peaks = n()) %>% # now add num of peaks near gene
-    select(type, Gene, Total_TFBS_motifs, Num_Peaks)
-  grouped_stats[[i]] <- out
-  print(i)
+grouper <- function(peak, motifs){
+  grouped_stats <- list()
+  for (i in motifs){
+    out <- peak %>% 
+      filter(peak_score > 75) %>% 
+      filter(!is.na(Gene)) %>% # remove NA genes where the peak didn't get a match (no genes within 500kb of a peak)
+      filter(motif == i) %>% # only retain the motif TFBS homer hits
+      group_by(chrom, start, stop, Gene) %>% # group by GFP/RFP,iPSC, the macs2 peak, and the gene
+      summarise(Num_TFBS_motifs=n()) %>%  # count total number of motifs
+      group_by(Gene) %>% # group now by GFP/RFP/IPSC and gene
+      summarise(Total_TFBS_motifs = sum(Num_TFBS_motifs), Num_Peaks = n()) %>% # now add num of peaks near gene
+      select(Gene, Total_TFBS_motifs, Num_Peaks)
+    grouped_stats[[i]] <- out
+    print(i)
+  }
+  grouped_stats
 }
 
-# further cut down to most interesting genes by differential peak activity and 
-# expression by TF
+gfp_ipsc_list <- grouper(peak_gfp_ipsc, top_motifs_gfp_rfp$Name)
+rfp_ipsc_list <- grouper(peak_rfp_ipsc, top_motifs_gfp_rfp$Name)
 
-TF_gene_stats_list <- list()
+# cut down to diff expressed genes and merge gfp_ipsc_list and rfp_ipsc_list
+rpe_ipsc_list <- list()
+for (i in names(gfp_ipsc_list)){
+  print(i)
+  rpe_ipsc_list[[i]] <- rfp_ipsc_list[[i]] %>% 
+    left_join(expression_rfp_ipsc) %>% 
+    filter(padj < 0.01) %>% 
+    filter(Gene %in% (gfp_ipsc_list[[i]] %>% 
+                        left_join(expression_gfp_ipsc) %>% 
+                        filter(padj < 0.01) %>% pull(Gene)))
+}
 
-for (i in motifs){
+# identify TFBS with overlapping gene lists
+overlap_df <- data.frame(i = character(), y = character(), ratio = double())
+overlap_matrix <- matrix(ncol = length(names(rpe_ipsc_list)), nrow = length(names(rpe_ipsc_list)))
+row.names(overlap_matrix) <- names(rpe_ipsc_list)
+colnames(overlap_matrix) <- names(rpe_ipsc_list)
+for (i in names(rpe_ipsc_list)){
+  row <- c()
+  for (j in names(rpe_ipsc_list)){
+    ratio <-  rpe_ipsc_list[[i]]$Gene %in% rpe_ipsc_list[[j]]$Gene %>% sum() / 
+      nrow(rpe_ipsc_list[[i]])
+    row <- c(row, ratio)
+  }
+  overlap_matrix[i,] <- row
+}
+
+library(ComplexHeatmap)
+Heatmap(overlap_matrix, column_names_max_height = unit(20, 'cm'),  row_names_max_width = unit(20, 'cm'))
+
+TF_gene_stats <- bind_rows(rpe_ipsc_list, .id = 'motif') %>% rowwise() %>% mutate(motif_core = toupper(gsub('\\(.*|.*BestGuess:','',motif))) %>% ungroup()
+```
+
+TF network
+```{r}
+library(visNetwork, warn.conflicts=F, quietly=T)
+
+
+
+way_too_common_genes <- TF_gene_stats %>% group_by(Gene) %>% summarise(Count= n()) %>% 
+  filter(Count > 15) %>% pull(Gene)
+
+
+
+
+TF_gene_stats_n <- TF_gene_stats %>% 
+  left_join(expression %>% select(Gene, TF)) %>% filter(TF == 'Yes') %>% unique() %>% 
+  filter(!Gene  %in% way_too_common_genes)
+
+
+
+TF <- TF_gene_stats_n %>%
+  distinct(motif_core) %>%
+  rename(label = motif_core)
+
+genes <- TF_gene_stats_n %>%
   
-  # ID differentially peak activity around genes for a TF
-  out <- grouped_stats[[i]] %>% dplyr::select(-Total_TFBS_motifs) %>% 
-    spread(type, Num_Peaks)
-  out[is.na(out)] <- 0
-  out <- out %>% 
-    mutate(ratio = !!as.name(comparison_1)/!!as.name(comparison_2), delta = !!as.name(comparison_1) - !!as.name(comparison_2)) %>% 
-    arrange(-delta) %>% 
-    left_join(expression %>% 
-                dplyr::select(Gene, log2FoldChange, padj) %>% 
-                unique()) %>% 
-    filter(!is.na(padj), 
-           abs(log2FoldChange) > 1, 
-           padj < 0.01) %>% 
-    filter(delta > 1, ratio > 1.5) # only keep 
-  TF_gene_stats_list[[i]] <- out
-  print(i)
-}
+  distinct(Gene) %>%
+  rename(label = Gene)
 
-TF_gene_stats <- bind_rows(TF_gene_stats_list, .id = 'motif') %>% rowwise() %>% mutate(motif_core = toupper(gsub('\\(.*|.*BestGuess:','',motif))) %>% ungroup()
+expression_TF <- left_join(expression, tf_gene, by = 'Gene')
+
+nodes <- full_join(TF, genes, by = "label") %>%  
+  arrange(label) %>% rowid_to_column("id") 
+
+
+edges <- TF_gene_stats_n %>%  
+  select(TF = motif_core, Gene, weight = log2FoldChange) %>% 
+  unique() %>% 
+  left_join(nodes, by = c("TF" = "label")) %>% 
+  rename(from = id) %>% 
+  left_join(nodes, by = c("Gene" = "label")) %>% 
+  rename(to = id) %>% 
+  ungroup() %>% 
+  select(from, to, weight) 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+nodes <- TF_gene_stats %>% left_join(expression %>% select(Gene, TF)) %>% filter(TF == 'Yes') %>% select(label = Gene) %>% unique()
+
+
+
+
+
+
+edges <- TF_gene_stats %>%  
+  select(TF = motif_core, Gene, weight = log2FoldChange) %>% 
+  unique() %>% 
+  left_join(nodes, by = c("TF" = "label")) %>% 
+  rename(from = TF, to = Gene)
+
+%>% 
+  left_join(nodes, by = c("Gene" = "label")) %>% 
+  rename(to = id) %>% 
+  ungroup() %>% 
+  select(from, to, weight) 
+
+visNetwork(nodes, edges, height = "700px", width = "100%") %>% 
+  visGroups(groupname = 'TF', color='red') %>% 
+  visGroups(groupname = 'goTF', color = 'pink') %>% 
+  visOptions(highlightNearest = list(enabled = T, degree = 2),
+             nodesIdSelection = TRUE) %>% 
+  visPhysics(stabilization = TRUE) %>% 
+  visEdges(smooth = FALSE) %>% 
+  visInteraction(navigationButtons = TRUE)
+
+1
 ```
 
 # Full table
@@ -166,7 +268,7 @@ TF_gene_stats_n <- TF_gene_stats %>%
   # filter(!grepl('GATA', motif_core)) %>% 
   group_by(motif_core) %>% 
   filter(delta > 2) %>% 
- # top_n(5, delta) %>% # no more than n by tF 
+  # top_n(5, delta) %>% # no more than n by tF 
   mutate(`(abs)log2FC` = abs(log2FoldChange)) %>% 
   #top_n(5,`(abs)log2FC`) %>% 
   #filter(!Gene %in% c('FZD8','OPCML','PFKP','NRIP1','TSHZ3', 'SOX6')) %>% # trimming out most common genes between TF
@@ -221,35 +323,35 @@ visNetwork(nodes, edges, height = "700px", width = "100%") %>%
 ids <- clusterProfiler::bitr(expression$Gene, fromType="SYMBOL", toType=c("UNIPROT", "ENSEMBL", "ENTREZID"), OrgDb="org.Hs.eg.db")
 
 set <- clusterProfiler::bitr(TF_gene_stats$Gene %>% unique(),
-            fromType="SYMBOL",
-            toType="ENTREZID",
-            OrgDb = "org.Hs.eg.db")
+                             fromType="SYMBOL",
+                             toType="ENTREZID",
+                             OrgDb = "org.Hs.eg.db")
 
 
 
 
 ego_bp <- clusterProfiler::enrichGO(gene          = set$ENTREZID,
-                   universe      = ids$ENTREZID %>% unique(),
-                   OrgDb         = org.Hs.eg.db,
-                   ont           = "BP",
-                   pool = TRUE,
-                   pAdjustMethod = "BH",
-                   pvalueCutoff = 0.1,
-                   qvalueCutoff = 0.1,
-                   keyType = 'ENTREZID',
-                   readable      = TRUE)
+                                    universe      = ids$ENTREZID %>% unique(),
+                                    OrgDb         = org.Hs.eg.db,
+                                    ont           = "BP",
+                                    pool = TRUE,
+                                    pAdjustMethod = "BH",
+                                    pvalueCutoff = 0.1,
+                                    qvalueCutoff = 0.1,
+                                    keyType = 'ENTREZID',
+                                    readable      = TRUE)
 
 ego2_bp <- clusterProfiler::simplify(ego_bp, cutoff=0.7, by="p.adjust", select_fun=min)
 
 ego_mf <- clusterProfiler::enrichGO(gene          = set$ENTREZID,
-                   universe      = ids$ENTREZID %>% unique(),
-                   OrgDb         = org.Hs.eg.db,
-                   ont           = "MF",
-                   pool = TRUE,
-                   pAdjustMethod = "BH",
-                   qvalueCutoff = 0.1,
-                   keyType = 'ENTREZID',
-                   readable      = TRUE)
+                                    universe      = ids$ENTREZID %>% unique(),
+                                    OrgDb         = org.Hs.eg.db,
+                                    ont           = "MF",
+                                    pool = TRUE,
+                                    pAdjustMethod = "BH",
+                                    qvalueCutoff = 0.1,
+                                    keyType = 'ENTREZID',
+                                    readable      = TRUE)
 
 ego2_mf <- clusterProfiler::simplify(ego_mf, cutoff=0.7, by="p.adjust", select_fun=min)
 
@@ -263,8 +365,8 @@ bind_rows(ego2_bp_out %>% mutate(ONT = 'BP'), ego2_mf_out %>% mutate(ONT = 'MF')
 # KEGG Pathway Enrichment
 ```{r, fig.width=5}
 kegg <- clusterProfiler::enrichKEGG(gene         = set$ENTREZID,
-                   organism     = 'hsa', 
-                   pvalueCutoff = 1)
+                                    organism     = 'hsa', 
+                                    pvalueCutoff = 1)
 kegg <- DOSE::setReadable(kegg,  OrgDb = org.Hs.eg.db, keytype = 'ENTREZID')
 
 kegg %>% data.frame() %>%  
