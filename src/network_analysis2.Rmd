@@ -28,16 +28,22 @@ Network Analysis
 ```{r, echo = T, results = 'hide', warning=F}
 library(tidyverse, warn.conflicts=F, quietly=T)
 
-peak <- read_tsv(params$datafile, col_names = F)
+#peak <- read_tsv(params$datafile, col_names = F)
 
-setwd('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/')
+#setwd('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/')
 known_gfp_ipsc <- read_tsv('homer_unique_peaks_GFP_ATAC-Seq__not__IPSC_ATAC-Seq/all/knownResults_matched_with_RNAseq.tsv')
 known_gfp_rfp <- read_tsv('homer_unique_peaks_GFP_ATAC-Seq__not__RFP_ATAC-Seq/all/knownResults_matched_with_RNAseq.tsv')
 known_rfp_ipsc <- read_tsv('homer_unique_peaks_RFP_ATAC-Seq__not__IPSC_ATAC-Seq/all/knownResults_matched_with_RNAseq.tsv')
 
-peak_gfp_ipsc <- read_tsv('peak_full/homer_GFP_ATAC-Seq__not__IPSC_ATAC-Seq/all/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif__GFP_ATAC-Seq__not__IPSC_ATAC-SeqIntersection.bed.gz', col_names = F)
-peak_gfp_rfp <- read_tsv('peak_full/homer_GFP_ATAC-Seq__not__RFP_ATAC-Seq/all/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif__GFP_ATAC-Seq__not__RFP_ATAC-SeqIntersection.bed.gz', col_names = F)
-peak_rfp_ipsc <- read_tsv('peak_full/homer_RFP_ATAC-Seq__not__IPSC_ATAC-Seq/all/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif__RFP_ATAC-Seq__not__IPSC_ATAC-SeqIntersection.bed.gz', col_names = F)
+peak_gfp_ipsc <- read_tsv('peak_full/homer_GFP_ATAC-Seq__not__IPSC_ATAC-Seq/all/common_peaks.blackListed.narrowPeak__all_homer_motif.bed.gz', col_names = F) %>% 
+  select(X1:X4, X14:X19)
+colnames(peak_gfp_ipsc) <- c('chrom','start','stop','peak_score','chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
+peak_gfp_rfp <- read_tsv('peak_full/homer_GFP_ATAC-Seq__not__RFP_ATAC-Seq/all/common_peaks.blackListed.narrowPeak__all_homer_motif.bed.gz', col_names = F) %>% 
+  select(X1:X4, X14:X19)
+colnames(peak_gfp_rfp) <- c('chrom','start','stop','peak_score','chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
+peak_rfp_ipsc <- read_tsv('peak_full/homer_RFP_ATAC-Seq__not__IPSC_ATAC-Seq/all/common_peaks.blackListed.narrowPeak__all_homer_motif.bed.gz', col_names = F) %>% 
+  select(X1:X4, X14:X19)
+colnames(peak_rfp_ipsc) <- c('chrom','start','stop','peak_score','chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
 
 # expression %>% filter(Gene %in% (known_rfp_ipsc %>% filter(`log P-pvalue` < -1000) %>% filter(Name %in% (known_gfp_ipsc %>% filter(`log P-pvalue` < -1000) %>% pull(Name))) %>% pull(Gene))) %>% data.frame() %>% arrange(Gene, Line)
 
@@ -67,17 +73,13 @@ top_motifs_gfp_rfp %>% select(Rank:RFP) %>% left_join(expression_gfp_rfp) %>% DT
 ```
 
 ```{r}
-tf_gene <- read_csv('~/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line_with_Diff_Exp.tsv')
-
-colnames(peak_gfp_ipsc) <- c('chrom','start','stop','type','macs2_score','strand','thickStart','thickStop','RGB','Distance_to_Gene','Gene','Description','chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
-
-
-motifs <- peak$motif %>% unique()
+# match TF to genes
+colnames(peak_gfp_ipsc) <- c('chrom','start','stop','size','macs2_score','strand','thickStart','thickStop','RGB','Distance_to_Gene','Gene','Description','space', 'chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
 
 # create gene centric info on peak/motif and differential gene expression iPSC <-> RPE
 grouped_stats <- list()
 
-for (i in motifs){
+for (i in top_motifs_rpe_ipsc$Motif){
   out <- peak %>% 
     filter(!is.na(Gene)) %>% # remove NA genes where the peak didn't get a match (no genes within 500kb of a peak)
     filter(motif == i) %>% # only retain the motif TFBS homer hits
