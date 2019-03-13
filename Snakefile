@@ -83,17 +83,18 @@ localrules: pull_lane_fastq_from_nisc_or_sra, retrieve_and_process_black_list, b
 	TF_to_target,  highlighted_homer_motif, cat_homer_annotate_peak, \
 	intersect_homer_motifs_with_all_common_peaks, clean_all_common_peaks, \
 	ucsc_view_homer_motifs, ucsc_view_bigWig, ucsc_view_common_peaks, \
-	closest_TSS_each_cell_type
+	closest_TSS_each_cell_type, unique_peaks, \
+	filter_down_all_common_peaks, intersect_homer_motifs_with_comparison_peaks
 
 wildcard_constraints:
 	sample = '|'.join(list(SAMPLE_PATH.keys())),
-	motif = '|'.join(list(config['motif_IDs'])),
 	cell_type = '|'.join(list(TYPE_SAMPLE.keys())),
 	lane_fastq = '|'.join([x.split('/')[-1].split('.bam')[0] for x in list(itertools.chain.from_iterable(SAMPLE_PATH.values()))]),
 	comparison = '|'.join(config['peak_comparison_pair'])
 
 rule all:
 	input:
+		expand('macs_peak/{comparison}_common_peaks.blackListed.narrowPeak', comparison = config['peak_comparison_pair']),
 		expand('homer/{cell_type}_{num}_homer_TFBS_run/knownResults_{num}.html', cell_type = ['GFP_ATAC-Seq'], num = [1,2,3,4,5,6,7,8]),
 	#	expand('macs_peak/{cell_type}_common_peaks.blackListed.closestTSS.narrowPeak', cell_type = ['GFP_ATAC-Seq']),
 	#	expand('computeMatrix/{cell_type}.matrix.gz', cell_type = ['IPSC_ChIP_h3k27ac','GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
@@ -105,7 +106,7 @@ rule all:
 		#'deeptools/multiBamSummary.npz',
 		#'deeptools/multiBamSummary.tsv',
 		#'metrics/reads_by_sample.txt',
-		'fastqc/multiqc/multiqc_report.html',
+	#	'fastqc/multiqc/multiqc_report.html',
 	#	expand('downsample_bam/{sample}.q5.rmdup.ds.bam', sample = list(SAMPLE_PATH.keys())),
 		#expand('msCentipede/closest_TSS/{cell_type}.{motif}.closestTSS.dat.gz', cell_type = list(TYPE_SAMPLE.keys()), motif = config['motif_IDs']),
 		#expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{motif}.union.HQ.pretty.bb', motif = config['motif_IDs']),
@@ -291,7 +292,7 @@ rule fastqc:
 	input:
 		'merged_bam/{sample}.bam'
 	output:
-		'fastqc/{sample}'
+		directory('fastqc/{sample}')
 	threads: 8
 	shell:
 		"""
@@ -819,13 +820,18 @@ rule label_with_TF_RNA_seq_expression:
 		novel = 'homer_unique_peaks_{comparison}/{peak_type}/homerResults_matched_with_RNAseq.tsv'
 	params:
 		gfp_vs_ipsc = '/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/GFP_vs_iPSC.results.csv',
-		gfp_vs_rfp = '/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/GFP_vs_RFP.results.csv'
+		gfp_vs_rfp = '/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/GFP_vs_RFP.results.csv',
+		rfp_vs_ipsc = '/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/RFP_vs_iPSC.results.csv'
 	run:
 		if wildcards.comparison == 'GFP_ATAC-Seq__not__IPSC_ATAC-Seq':
 			shell("module load {config[R_version]}; \
 			Rscript ~/git/ipsc_rpe_atac/src/match_TF_to_expression.R {input.homer_known} 'Name' {output.known} {params.gfp_vs_ipsc}; \
 			Rscript ~/git/ipsc_rpe_atac/src/match_TF_to_expression.R {input.homer_novel} 'Best Match/Details' {output.novel} {params.gfp_vs_ipsc}")
-		else:
+		elif wildcards.comparison == 'RFP_ATAC-Seq__not__IPSC_ATAC-Seq':
+			shell("module load {config[R_version]}; \
+			Rscript ~/git/ipsc_rpe_atac/src/match_TF_to_expression.R {input.homer_known} 'Name' {output.known} {params.gfp_vs_rfp}; \
+			Rscript ~/git/ipsc_rpe_atac/src/match_TF_to_expression.R {input.homer_novel} 'Best Match/Details' {output.novel} {params.gfp_vs_rfp}")
+		else:	
 			shell("module load {config[R_version]}; \
 			Rscript ~/git/ipsc_rpe_atac/src/match_TF_to_expression.R {input.homer_known} 'Name' {output.known} {params.gfp_vs_rfp}; \
 			Rscript ~/git/ipsc_rpe_atac/src/match_TF_to_expression.R {input.homer_novel} 'Best Match/Details' {output.novel} {params.gfp_vs_rfp}")
@@ -854,53 +860,29 @@ rule cat_homer_annotate_peaks:
 		'peak_full/homer_{comparison}/{peak_type}/all_homer_motif.bed.gz'
 	shell:
 		"""
+		module load {config[samtools_version]}
 		cat {input.motifs} | grep -v "track name" | uniq | sort -k1,1 -k2,2n | uniq | bgzip -cf > {output}
-		"""
-
-# filter down all_homer_motif.bed.gz
-rule highlighted_homer_motif:
-	input:
-		bed = 'peak_full/homer_{comparison}/{peak_type}/all_homer_motif.bed.gz',
-		grep = 'homer_unique_peaks_{comparison}/{peak_type}/targets.txt'
-	output:
-		'peak_full/homer_{comparison}/{peak_type}/interesting_homer_motif.bed.gz'
-	shell:
-		"""
-		zcat {input.bed} | grep -f {input.grep} - | bgzip -cf > {output}
-		"""
-
-# process 'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.bed'
-# only keep two closest genes under 500,00bp away
-# also clean up the column fields a bit
-rule clean_all_common_peaks:
-	input:
-		'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.bed'
-	output:
-		'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.cleaned.bed'
-	shell:
-		"""
-		module load {config[R_version]}
-		Rscript /home/mcgaugheyd/git/ipsc_rpe_atac/src/merge_peaks_homer_motifs.R {input} 2 {output}
 		"""
 
 # intersect homer motif bed 'peak_full/homer/interesting_homer_motif.bed.gz' 
 # with all 'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.bed'
-rule intersect_homer_motifs_with_all_common_peaks:
+rule intersect_homer_motifs_with_comparison_peaks:
 	input:
-		a = 'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.cleaned.bed',
-		b = 'peak_full/homer_{comparison}/{peak_type}/interesting_homer_motif.bed.gz'
+		a = 'macs_peak/{comparison}_common_peaks.blackListed.narrowPeak',
+		b = 'peak_full/homer_{comparison}/{peak_type}/all_homer_motif.bed.gz'
 	output:
-		'peak_full/homer_{comparison}/{peak_type}/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz'
+		'peak_full/homer_{comparison}/{peak_type}/common_peaks.blackListed.narrowPeak__all_homer_motif.bed.gz'
 	shell:
 		"""
 		module load {config[bedtools_version]}
+		module load {config[samtools_version]}
 		intersectBed -a <(sort -k1,1 -k2,2n {input.a}) -b {input.b} -wa -wb -sorted | bgzip -cf > {output}
 		"""
 
 # create network analysis R report
 rule TF_gene_network_R:
 	input:
-		'peak_full/homer_{comparison}/{peak_type}/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz'
+		full = 'peak_full/homer_{comparison}/{peak_type}/common_peaks.blackListed.narrowPeak__all_homer_motif.bed.gz'
 	output:
 		file = 'network_reports/{comparison}_{peak_type}/{comparison}_{peak_type}_networkAnalysis.html'
 	params:
