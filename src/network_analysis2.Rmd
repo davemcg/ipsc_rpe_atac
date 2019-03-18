@@ -143,7 +143,25 @@ k12$cluster %>% enframe() %>% arrange(value) %>% rename(Cluster = value)
 
 TF_gene_stats <- left_join(TF_gene_stats, k12$cluster %>% enframe() %>% arrange(value) %>% rename(motif =name, Cluster = value))
 ```
+# GO Term enrichment for each cluster
+```{r}
+library(org.Hs.eg.db)
+library(clusterProfiler)
+way_too_common_genes <- TF_gene_stats %>% dplyr::select(Gene, Cluster) %>% unique() %>% group_by(Gene) %>% summarise(Count= n()) %>% arrange(-Count) %>% filter(Count > 6) %>% pull(Gene)
+TF_gene_stats_x <- TF_gene_stats %>% filter(!Gene %in% way_too_common_genes)
 
+go_term_e <- list()
+for (i in unique(TF_gene_stats_x$motif_core)){
+  print(i)
+  go_term_e <- enrichGO(gene          = TF_gene_stats_x %>% filter(motif_core == i) %>% pull(Gene),
+                        keyType       = 'ENSEMBL',
+                        OrgDb         = org.Hs.eg.db,
+                        ont           = "all",
+                        pAdjustMethod = "BH",
+                        pvalueCutoff  = 0.001,
+                        qvalueCutoff  = 0.01)
+}
+```
 TF network
 ```{r}
 library(visNetwork, warn.conflicts=F, quietly=T)
@@ -151,7 +169,7 @@ library(visNetwork, warn.conflicts=F, quietly=T)
 
 # remove genes that are in 7 or more of the 12 clusters
 TF_gene_stats %>% select(Gene, Cluster) %>% unique() %>% group_by(Gene) %>% summarise(Count= n()) %>% arrange(-Count) %>% filter(Count > 6) %>% DT::datatable()
-way_too_common_genes <- TF_gene_stats %>% select(Gene, Cluster) %>% unique() %>% group_by(Gene) %>% summarise(Count= n()) %>% arrange(-Count) %>% filter(Count > 6) %>% pull(Gene)
+
 
 # rename clusters
 cluster_motifs <- TF_gene_stats_n %>% group_by(Cluster) %>% summarise(motif_core = paste(sort(unique(motif_core)), collapse = ','))
@@ -159,7 +177,10 @@ TF_gene_stats <- TF_gene_stats %>% select(-motif_core) %>% left_join(cluster_mot
 
 TF_gene_stats_n <- TF_gene_stats %>% 
   left_join(expression %>% select(Gene, TF)) %>% unique() %>% 
-  filter(!Gene  %in% way_too_common_genes)
+  filter(!Gene  %in% way_too_common_genes) %>% 
+  filter(baseMean > 3000) %>% 
+  filter(abs(log2FoldChange) > 1) %>% 
+  filter(padj < 0.001)
 
 
 
@@ -224,8 +245,8 @@ edges <- TF_gene_stats_n %>%
   select(from, to, weight) 
 
 visNetwork(nodes, edges, height = "700px", width = "100%") %>% 
-  visGroups(groupname = 'TF', color='red') %>% 
-  visGroups(groupname = 'goTF', color = 'pink') %>% 
+  visGroups(groupname = 'No', color='blue') %>% 
+  visGroups(groupname = 'Yes', color = 'red') %>% 
   visOptions(highlightNearest = list(enabled = T, degree = 2),
              nodesIdSelection = TRUE) %>% 
   visPhysics(stabilization = TRUE) %>% 
