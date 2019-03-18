@@ -126,9 +126,22 @@ for (i in names(rpe_ipsc_list)){
 }
 
 library(ComplexHeatmap)
-Heatmap(overlap_matrix, column_names_max_height = unit(20, 'cm'),  row_names_max_width = unit(20, 'cm'))
+Heatmap(overlap_matrix, column_names_max_height = unit(20, 'cm'),  row_names_max_width = unit(20, 'cm'), cluster_rows = F, cluster_columns = F)
 
 TF_gene_stats <- bind_rows(rpe_ipsc_list, .id = 'motif') %>% rowwise() %>% mutate(motif_core = toupper(gsub('\\(.*|.*BestGuess:','',motif))) %>% ungroup()
+```
+# calculate optimal number of clusters
+```{r}
+
+library(factoextra)
+fviz_nbclust(overlap_matrix, kmeans, method = "wss", k.max = 25)
+
+# using 12
+k12 <- kmeans(overlap_matrix, centers = 12, nstart = 250)
+
+k12$cluster %>% enframe() %>% arrange(value) %>% rename(Cluster = value)
+
+TF_gene_stats <- left_join(TF_gene_stats, k12$cluster %>% enframe() %>% arrange(value) %>% rename(motif =name, Cluster = value))
 ```
 
 TF network
@@ -136,15 +149,16 @@ TF network
 library(visNetwork, warn.conflicts=F, quietly=T)
 
 
+# remove genes that are in 7 or more of the 12 clusters
+TF_gene_stats %>% select(Gene, Cluster) %>% unique() %>% group_by(Gene) %>% summarise(Count= n()) %>% arrange(-Count) %>% filter(Count > 6) %>% DT::datatable()
+way_too_common_genes <- TF_gene_stats %>% select(Gene, Cluster) %>% unique() %>% group_by(Gene) %>% summarise(Count= n()) %>% arrange(-Count) %>% filter(Count > 6) %>% pull(Gene)
 
-way_too_common_genes <- TF_gene_stats %>% group_by(Gene) %>% summarise(Count= n()) %>% 
-  filter(Count > 15) %>% pull(Gene)
-
-
-
+# rename clusters
+cluster_motifs <- TF_gene_stats_n %>% group_by(Cluster) %>% summarise(motif_core = paste(sort(unique(motif_core)), collapse = ','))
+TF_gene_stats <- TF_gene_stats %>% select(-motif_core) %>% left_join(cluster_motifs) %>% select(-motif) %>% unique()
 
 TF_gene_stats_n <- TF_gene_stats %>% 
-  left_join(expression %>% select(Gene, TF)) %>% filter(TF == 'Yes') %>% unique() %>% 
+  left_join(expression %>% select(Gene, TF)) %>% unique() %>% 
   filter(!Gene  %in% way_too_common_genes)
 
 
@@ -154,7 +168,6 @@ TF <- TF_gene_stats_n %>%
   rename(label = motif_core)
 
 genes <- TF_gene_stats_n %>%
-  
   distinct(Gene) %>%
   rename(label = Gene)
 
@@ -188,26 +201,26 @@ edges <- TF_gene_stats_n %>%
 
 
 
-
-
-
-nodes <- TF_gene_stats %>% left_join(expression %>% select(Gene, TF)) %>% filter(TF == 'Yes') %>% select(label = Gene) %>% unique()
-
-
-
-
-
-
-edges <- TF_gene_stats %>%  
-  select(TF = motif_core, Gene, weight = log2FoldChange) %>% 
-  unique() %>% 
-  left_join(nodes, by = c("TF" = "label")) %>% 
-  rename(from = TF, to = Gene)
-
-%>% 
-  left_join(nodes, by = c("Gene" = "label")) %>% 
-  rename(to = id) %>% 
-  ungroup() %>% 
+# 
+# 
+# 
+# nodes <- TF_gene_stats %>% left_join(expression %>% select(Gene, TF)) %>% filter(TF == 'Yes') %>% select(label = Gene) %>% unique()
+# 
+# 
+# 
+# 
+# 
+# 
+# edges <- TF_gene_stats %>%  
+#   select(TF = motif_core, Gene, weight = log2FoldChange) %>% 
+#   unique() %>% 
+#   left_join(nodes, by = c("TF" = "label")) %>% 
+#   rename(from = TF, to = Gene)
+# 
+# %>% 
+#   left_join(nodes, by = c("Gene" = "label")) %>% 
+#   rename(to = id) %>% 
+#   ungroup() %>% 
   select(from, to, weight) 
 
 visNetwork(nodes, edges, height = "700px", width = "100%") %>% 
