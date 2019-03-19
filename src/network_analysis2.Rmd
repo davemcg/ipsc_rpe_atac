@@ -148,13 +148,19 @@ TF_gene_stats <- left_join(TF_gene_stats, k12$cluster %>% enframe() %>% arrange(
 library(org.Hs.eg.db)
 library(clusterProfiler)
 way_too_common_genes <- TF_gene_stats %>% dplyr::select(Gene, Cluster) %>% unique() %>% group_by(Gene) %>% summarise(Count= n()) %>% arrange(-Count) %>% filter(Count > 6) %>% pull(Gene)
-TF_gene_stats_x <- TF_gene_stats %>% filter(!Gene %in% way_too_common_genes)
 
+
+# rename clusters
+cluster_motifs <- TF_gene_stats %>% group_by(Cluster) %>% summarise(motif_core = paste(sort(unique(motif_core)), collapse = ','))
+TF_gene_stats <- TF_gene_stats %>% dplyr::select(-motif_core) %>% left_join(cluster_motifs) %>% dplyr::select(-motif) %>% unique()
+
+
+TF_gene_stats_x <- TF_gene_stats %>% filter(!Gene %in% way_too_common_genes)
 go_term_e <- list()
 for (i in unique(TF_gene_stats_x$motif_core)){
   print(i)
-  go_term_e <- enrichGO(gene          = TF_gene_stats_x %>% filter(motif_core == i) %>% pull(Gene),
-                        keyType       = 'ENSEMBL',
+  go_term_e[[i]] <- enrichGO(gene          = TF_gene_stats_x %>% filter(motif_core == i) %>% pull(Gene),
+                        keyType       = 'SYMBOL',
                         OrgDb         = org.Hs.eg.db,
                         ont           = "all",
                         pAdjustMethod = "BH",
@@ -171,9 +177,7 @@ library(visNetwork, warn.conflicts=F, quietly=T)
 TF_gene_stats %>% select(Gene, Cluster) %>% unique() %>% group_by(Gene) %>% summarise(Count= n()) %>% arrange(-Count) %>% filter(Count > 6) %>% DT::datatable()
 
 
-# rename clusters
-cluster_motifs <- TF_gene_stats_n %>% group_by(Cluster) %>% summarise(motif_core = paste(sort(unique(motif_core)), collapse = ','))
-TF_gene_stats <- TF_gene_stats %>% select(-motif_core) %>% left_join(cluster_motifs) %>% select(-motif) %>% unique()
+
 
 TF_gene_stats_n <- TF_gene_stats %>% 
   left_join(expression %>% select(Gene, TF)) %>% unique() %>% 
