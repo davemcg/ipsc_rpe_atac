@@ -24,7 +24,25 @@ Differential Expression: `r params$expression`
 
 `r params$comparison_1` against `r params$comparison_2`
 
-Network Analysis
+# Analysis of TFBS <-> gene sets
+The core idea of this analysis is that the most significant HOMER identified TFBS are indeed enriched TFBS between GFP and RFP <-> iPSC and GFP <-> RFP. 
+
+I believe these TF(BS) are the best targets to experimentally validate with KO/knockdown in iPSC -> RPE. What is missing are the likely target(s) of the TFBS. What follows is a long and involved process to get a set of genes associated with each TFBS cluster. 
+
+Cluster? That will be explained later, but very briefly, HOMER returns a bunch of TFBS that seems to be highly related and I think should be merged. 
+
+OK, now for a brief description of what HOMER is doing.
+
+HOMER works on the peaks unique to GFP (and not RFP) and GFP and RFP (and not iPSC). 
+
+More precisely, HOMER runs on the summits (highest peak intensity / read coverage) and the 100bp surrounding that. The sequenced is scanned against a randomized set of sequences and enriched motifs are identified. The document uses only the knownResults.html file (thus ignoring HOMER's attempt to ID novel motifs). This constricts identification of TFBS to TF with worked out motifs. 
+
+After HOMER IDs TFBS, I then use HOMER again to scan the peak lists for the motifs that were ID'ed. That is the primary input for the document. 
+
+The differential RNA-seq data from iPSC/RFP/GFP is also loaded in to do some more filtering. 
+
+
+# Data Loading
 ```{r, echo = T, results = 'hide', warning=F}
 library(tidyverse, warn.conflicts=F, quietly=T)
 
@@ -60,113 +78,224 @@ top_motifs_gfp_rfp <- known_gfp_rfp %>% filter(`log P-pvalue` < -100)
 ```
 
 # Top TFBS that are highly enriched in both GFP and RFP compared to iPSC
+If you want, you can ignore everything after this and just pick a few TF off of this list. The list is sorted by p value, so the most enriched motifs are at the top. 
 ```{r}
 top_motifs_rpe_ipsc %>% mutate(Gene = case_when(grepl('^FRA', Gene) ~ gsub('FRA', 'FOSL', Gene),
                                                 grepl('AP1', Gene) ~ 'JUN',
                                                 TRUE ~ Gene)) %>%  
-  select(Rank:RFP) %>% left_join(expression_rpe_ipsc) %>% DT::datatable()
+  dplyr::select(Rank:RFP) %>% left_join(expression_rpe_ipsc) %>% DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
 ```
 
 # Top TFBS that are highly enriched in both GFP compared to RFP
+The idea with GFP being compared to RFP is that you will find TF who need to be used / maintained to get from iPSC -> RFP to GFP (high TYR activity). If you see TF that overlap with the previous list, this suggests TF activity that needs to be maintained. if you see a new TF, that suggests a new process is being activated. 
 ```{r}
-top_motifs_gfp_rfp %>% select(Rank:RFP) %>% left_join(expression_gfp_rfp) %>% DT::datatable()
+top_motifs_gfp_rfp %>% dplyr::select(Rank:RFP) %>% left_join(expression_gfp_rfp) %>% DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
 ```
+# Match TF to genes
+This is done most on distance from peak TFBS to TSS of gene. Each peak/TFBS is assigned to the closest two genes, within 500,000bp. 
 
+A macs2 peak score > 75 is required to keep the peak/TFBS. 
+
+Most peaks have several TFBS. I don't know which is the real one(s). 
+
+Two other filters are applied to cut down the TFBS <-> gene list:
+
+- q < 0.01 differential gene expression between iPSC and RFP **and** iPSC and GFP
+- Peak within 100,000bp of TSS for one set of analysis (200K up and down, so 200K total bp)
+- the idea is that TFBS closer to gene are more likely to be functional
+- The other set just uses any peak within 500,000 (either direction of TSS, so 1M(illion) total bp)
 ```{r}
-# match TF to genes
+
 colnames(peak_gfp_ipsc) <- c('chrom','start','stop','size','macs2_score','strand','thickStart','thickStop','RGB','Distance_to_Gene','Gene','Description','space', 'chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
 
 # create gene centric info on peak/motif and differential gene expression iPSC <-> RPE
-grouper <- function(peak, motifs){
+grouper <- function(peak, motifs, distance){
   grouped_stats <- list()
   for (i in motifs){
     out <- peak %>% 
       filter(peak_score > 75) %>% 
+      filter(Distance_TSS_peak < distance) %>% 
       filter(!is.na(Gene)) %>% # remove NA genes where the peak didn't get a match (no genes within 500kb of a peak)
       filter(motif == i) %>% # only retain the motif TFBS homer hits
       group_by(chrom, start, stop, Gene) %>% # group by GFP/RFP,iPSC, the macs2 peak, and the gene
       summarise(Num_TFBS_motifs=n()) %>%  # count total number of motifs
       group_by(Gene) %>% # group now by GFP/RFP/IPSC and gene
       summarise(Total_TFBS_motifs = sum(Num_TFBS_motifs), Num_Peaks = n()) %>% # now add num of peaks near gene
-      select(Gene, Total_TFBS_motifs, Num_Peaks)
+      dplyr::select(Gene, Total_TFBS_motifs, Num_Peaks)
     grouped_stats[[i]] <- out
-    print(i)
+    #print(i)
   }
   grouped_stats
 }
 
-gfp_ipsc_list <- grouper(peak_gfp_ipsc, top_motifs_gfp_rfp$Name)
-rfp_ipsc_list <- grouper(peak_rfp_ipsc, top_motifs_gfp_rfp$Name)
+gfp_ipsc_list_200K <- grouper(peak_gfp_ipsc, top_motifs_gfp_rfp$Name, 100000)
+rfp_ipsc_list_200K <- grouper(peak_rfp_ipsc, top_motifs_gfp_rfp$Name, 100000)
+
+gfp_ipsc_list_1M <- grouper(peak_gfp_ipsc, top_motifs_gfp_rfp$Name, 1000000)
+rfp_ipsc_list_1M <- grouper(peak_rfp_ipsc, top_motifs_gfp_rfp$Name, 1000000)
 
 # cut down to diff expressed genes and merge gfp_ipsc_list and rfp_ipsc_list
-rpe_ipsc_list <- list()
-for (i in names(gfp_ipsc_list)){
-  print(i)
-  rpe_ipsc_list[[i]] <- rfp_ipsc_list[[i]] %>% 
-    left_join(expression_rfp_ipsc) %>% 
-    filter(padj < 0.01) %>% 
-    filter(Gene %in% (gfp_ipsc_list[[i]] %>% 
-                        left_join(expression_gfp_ipsc) %>% 
-                        filter(padj < 0.01) %>% pull(Gene)))
-}
-
-# identify TFBS with overlapping gene lists
-overlap_df <- data.frame(i = character(), y = character(), ratio = double())
-overlap_matrix <- matrix(ncol = length(names(rpe_ipsc_list)), nrow = length(names(rpe_ipsc_list)))
-row.names(overlap_matrix) <- names(rpe_ipsc_list)
-colnames(overlap_matrix) <- names(rpe_ipsc_list)
-for (i in names(rpe_ipsc_list)){
-  row <- c()
-  for (j in names(rpe_ipsc_list)){
-    ratio <-  rpe_ipsc_list[[i]]$Gene %in% rpe_ipsc_list[[j]]$Gene %>% sum() / 
-      nrow(rpe_ipsc_list[[i]])
-    row <- c(row, ratio)
+merger <- function(gfp_ipsc_list, rfp_ipsc_list){
+  rpe_ipsc_list <- list()
+  for (i in names(gfp_ipsc_list)){
+    #print(i)
+    rpe_ipsc_list[[i]] <- rfp_ipsc_list[[i]] %>% 
+      left_join(expression_rfp_ipsc) %>% 
+      filter(padj < 0.01) %>% 
+      filter(Gene %in% (gfp_ipsc_list[[i]] %>% 
+                          left_join(expression_gfp_ipsc) %>% 
+                          filter(padj < 0.01) %>% pull(Gene)))
   }
-  overlap_matrix[i,] <- row
+  # identify TFBS with overlapping gene lists
+  overlap_df <- data.frame(i = character(), y = character(), ratio = double())
+  overlap_matrix <- matrix(ncol = length(names(rpe_ipsc_list)), nrow = length(names(rpe_ipsc_list)))
+  row.names(overlap_matrix) <- names(rpe_ipsc_list)
+  colnames(overlap_matrix) <- names(rpe_ipsc_list)
+  for (i in names(rpe_ipsc_list)){
+    row <- c()
+    for (j in names(rpe_ipsc_list)){
+      ratio <-  rpe_ipsc_list[[i]]$Gene %in% rpe_ipsc_list[[j]]$Gene %>% sum() / 
+        nrow(rpe_ipsc_list[[i]])
+      row <- c(row, ratio)
+    }
+    overlap_matrix[i,] <- row
+  }
+  
+  library(ComplexHeatmap)
+  # Heatmap(overlap_matrix, column_names_max_height = unit(20, 'cm'),  row_names_max_width = unit(20, 'cm'), cluster_rows = F, cluster_columns = F)
+  
+  out <- list()
+  out$stats <- bind_rows(rpe_ipsc_list, .id = 'motif') %>% rowwise() %>% mutate(motif_core = toupper(gsub('\\(.*|.*BestGuess:','',motif))) %>% ungroup()
+  out$overlap_matrix <- overlap_matrix
+  out
 }
 
-library(ComplexHeatmap)
-Heatmap(overlap_matrix, column_names_max_height = unit(20, 'cm'),  row_names_max_width = unit(20, 'cm'), cluster_rows = F, cluster_columns = F)
 
-TF_gene_stats <- bind_rows(rpe_ipsc_list, .id = 'motif') %>% rowwise() %>% mutate(motif_core = toupper(gsub('\\(.*|.*BestGuess:','',motif))) %>% ungroup()
+TF_gene_200K <- merger(gfp_ipsc_list_200K, rfp_ipsc_list_200K)
+TF_gene_1M <- merger(gfp_ipsc_list_1M, rfp_ipsc_list_1M)
+
 ```
-# calculate optimal number of clusters
-```{r}
 
+# Drop 33 TF into 12 clusters
+This is a bit nutty, but HOMER returns many redundant TFBS (e.g. all the TEADs). What I've done is take the gene list associated with each TFBS (the 1M bp list) and compared how much overlap there is with every other TFBS. The TFBS with high overlap get clustered together by a kmeans algorithm. I hand-ish picked 12 clusters from the scree plot below, which return reasonable-looking results (table)
+
+You see in the data table below the cluster assignments (the number has no real value) for each HOMER TFBS. 
+
+For example, you see that CTCF and BORIS are grouped together - which makes sense when you this publication: https://genomebiology.biomedcentral.com/articles/10.1186/s13059-015-0736-8 "CTCF and BORIS (CTCFL), two paralogous mammalian proteins sharing nearly identical DNA binding domains..."
+```{r}
 library(factoextra)
-fviz_nbclust(overlap_matrix, kmeans, method = "wss", k.max = 25)
+fviz_nbclust(TF_gene_1M$overlap_matrix, kmeans, method = "wss", k.max = 25)
 
 # using 12
 k12 <- kmeans(overlap_matrix, centers = 12, nstart = 250)
 
-k12$cluster %>% enframe() %>% arrange(value) %>% rename(Cluster = value)
+k12$cluster %>% enframe() %>% arrange(value) %>% dplyr::rename(Cluster = value)
 
-TF_gene_stats <- left_join(TF_gene_stats, k12$cluster %>% enframe() %>% arrange(value) %>% rename(motif =name, Cluster = value))
+#TF_gene_stats <- left_join(TF_gene_stats, k12$cluster %>% enframe() %>% arrange(value) %>% dplyr::rename(motif =name, Cluster = value))
+```
+# Filter down to more common motifs per gene
+
+The last major filtering step removes genes that associated with more than half of the 12 clusters. I believe that these are either interesting because they keep re-appearing everywhere or not interesting for the same reason. 
+Anyways, I think they should be pulled from the TFBS cluster analysis as otherwise the same GO terms will just be enriched over and over again. 
+
+## 1 megabase list
+```{r}
+filtering <- function(TF_gene_list){
+  TF_gene <- TF_gene_list$stats %>% 
+    filter(Total_TFBS_motifs > 1, Num_Peaks > 1) %>% 
+    left_join(k12$cluster %>% enframe() %>% dplyr::rename(motif = name, kmeans_Cluster = value)) %>% 
+    left_join(expression %>% dplyr::select(Gene, TF))
+  
+  common_genes <- TF_gene %>% 
+    dplyr::select(Gene, kmeans_Cluster, TF) %>% 
+    unique() %>% 
+    group_by(Gene) %>% 
+    summarise(Count= n(), TF = unique(TF)) %>% 
+    arrange(-Count) %>% 
+    dplyr::filter(Count > 6) 
+  print(common_genes %>% DT::datatable(extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel'))))
+  
+  print(enrichGO(gene    = common_genes$Gene,
+                 keyType       = 'SYMBOL',
+                 OrgDb         = org.Hs.eg.db,
+                 ont           = "BP",
+                 pAdjustMethod = "BH",
+                 pvalueCutoff  = 0.01,
+                 qvalueCutoff  = 0.1) %>% 
+          summary() %>% 
+          DT::datatable(extensions = 'Buttons', 
+                        options = list(
+                          dom = 'Bfrtip',
+                          buttons = c('copy', 'csv', 'excel')))
+  )
+  
+  # name the cluster after the core motif names
+  cluster_motifs <- TF_gene %>% group_by(kmeans_Cluster) %>% summarise(motif_core = paste(sort(unique(motif_core)), collapse = ','))
+  TF_gene %>% 
+    filter(!Gene %in% common_genes$Gene) %>% 
+    unique() %>% dplyr::select(-motif_core) %>% 
+    left_join(cluster_motifs)
+}
+
+
+TF_gene_filtered_1M <- filtering(TF_gene_1M)
+
+```
+
+## 200K list
+```{r}
+TF_gene_filtered_200K <- filtering(TF_gene_200K)
+```
+
+# Motifs (clusters) with associated genes.
+What's the cluster thing? Well, a lot of the motifs that HOMER returns looks pretty similar to each other (e.g TEAD1,2,3, whatever). What I did was take each gene list associated with TFBS and compare to every other TFBS - gene list. The more related sets get grouped together with a kmeans algorithm. You see in the `motif_core` column below what motifs are grouped together. 
+
+
+## Motifs within 1,000,000bp of gene TSS
+```{r}
+TF_gene_filtered_1M %>% DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+```
+
+## Motifs within 100,000bp of gene TSS
+```{r}
+TF_gene_filtered_200K %>% DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
 ```
 # GO Term enrichment for each cluster
+Very few of the cluster <-> gene sets have enriched GO terms
 ```{r}
 library(org.Hs.eg.db)
 library(clusterProfiler)
-way_too_common_genes <- TF_gene_stats %>% dplyr::select(Gene, Cluster) %>% unique() %>% group_by(Gene) %>% summarise(Count= n()) %>% arrange(-Count) %>% filter(Count > 6) %>% pull(Gene)
-
-
-# rename clusters
-cluster_motifs <- TF_gene_stats %>% group_by(Cluster) %>% summarise(motif_core = paste(sort(unique(motif_core)), collapse = ','))
-TF_gene_stats <- TF_gene_stats %>% dplyr::select(-motif_core) %>% left_join(cluster_motifs) %>% dplyr::select(-motif) %>% unique()
 
 
 TF_gene_stats_x <- TF_gene_stats %>% filter(!Gene %in% way_too_common_genes)
-go_term_e <- list()
-for (i in unique(TF_gene_stats_x$motif_core)){
+go_term_BP_1M <- list()
+for (i in unique(TF_gene_filtered_1M$motif_core)){
   print(i)
-  go_term_e[[i]] <- enrichGO(gene          = TF_gene_stats_x %>% filter(motif_core == i) %>% pull(Gene),
-                        keyType       = 'SYMBOL',
-                        OrgDb         = org.Hs.eg.db,
-                        ont           = "all",
-                        pAdjustMethod = "BH",
-                        pvalueCutoff  = 0.001,
-                        qvalueCutoff  = 0.01)
+  go_term_BP_1M[[i]] <- enrichGO(gene    = TF_gene_filtered_1M %>% filter(motif_core == i) %>% pull(Gene),
+                                 keyType       = 'SYMBOL',
+                                 OrgDb         = org.Hs.eg.db,
+                                 ont           = "BP",
+                                 pAdjustMethod = "BH",
+                                 pvalueCutoff  = 0.01,
+                                 qvalueCutoff  = 0.1)
 }
+
+go_term_BP_200K <- list()
+for (i in unique(TF_gene_filtered_200K$motif_core)){
+  print(i)
+  go_term_BP_200K[[i]] <- enrichGO(gene    = TF_gene_filtered_200K %>% filter(motif_core == i) %>% pull(Gene),
+                                   keyType       = 'SYMBOL',
+                                   OrgDb         = org.Hs.eg.db,
+                                   ont           = "BP",
+                                   pAdjustMethod = "BH",
+                                   pvalueCutoff  = 0.01,
+                                   qvalueCutoff  = 0.1)
+}
+
+bind_rows(lapply(go_term_BP_1M, function(x) x %>% summary()), .id = 'Motifs') %>% DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+bind_rows(lapply(go_term_BP_200K, function(x) x %>% summary()), .id = 'Motifs') %>% DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
 ```
 TF network
 ```{r}
@@ -174,27 +303,25 @@ library(visNetwork, warn.conflicts=F, quietly=T)
 
 
 # remove genes that are in 7 or more of the 12 clusters
-TF_gene_stats %>% select(Gene, Cluster) %>% unique() %>% group_by(Gene) %>% summarise(Count= n()) %>% arrange(-Count) %>% filter(Count > 6) %>% DT::datatable()
+TF_gene_stats %>% select(Gene, Cluster) %>% unique() %>% group_by(Gene) %>% summarise(Count= n()) %>% arrange(-Count) %>% filter(Count > 6) %>% DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
 
 
 
 
-TF_gene_stats_n <- TF_gene_stats %>% 
-  left_join(expression %>% select(Gene, TF)) %>% unique() %>% 
-  filter(!Gene  %in% way_too_common_genes) %>% 
-  filter(baseMean > 3000) %>% 
-  filter(abs(log2FoldChange) > 1) %>% 
-  filter(padj < 0.001)
+TF_gene_stats_n <- TF_gene_filtered_200K
+#filter(baseMean > 3000) %>% 
+#filter(abs(log2FoldChange) > 1) %>% 
+#filter(padj < 0.001)
 
 
 
 TF <- TF_gene_stats_n %>%
   distinct(motif_core) %>%
-  rename(label = motif_core)
+  dplyr::rename(label = motif_core)
 
 genes <- TF_gene_stats_n %>%
   distinct(Gene) %>%
-  rename(label = Gene)
+  dplyr::rename(label = Gene)
 
 expression_TF <- left_join(expression, tf_gene, by = 'Gene')
 
@@ -203,14 +330,14 @@ nodes <- full_join(TF, genes, by = "label") %>%
 
 
 edges <- TF_gene_stats_n %>%  
-  select(TF = motif_core, Gene, weight = log2FoldChange) %>% 
+  dplyr::select(TF = motif_core, Gene, weight = log2FoldChange) %>% 
   unique() %>% 
   left_join(nodes, by = c("TF" = "label")) %>% 
-  rename(from = id) %>% 
+  dplyr::rename(from = id) %>% 
   left_join(nodes, by = c("Gene" = "label")) %>% 
-  rename(to = id) %>% 
+  dplyr::rename(to = id) %>% 
   ungroup() %>% 
-  select(from, to, weight) 
+  dplyr::select(from, to, weight) 
 
 
 
@@ -246,18 +373,17 @@ edges <- TF_gene_stats_n %>%
 #   left_join(nodes, by = c("Gene" = "label")) %>% 
 #   rename(to = id) %>% 
 #   ungroup() %>% 
-  select(from, to, weight) 
+select(from, to, weight) 
 
-visNetwork(nodes, edges, height = "700px", width = "100%") %>% 
-  visGroups(groupname = 'No', color='blue') %>% 
-  visGroups(groupname = 'Yes', color = 'red') %>% 
-  visOptions(highlightNearest = list(enabled = T, degree = 2),
-             nodesIdSelection = TRUE) %>% 
-  visPhysics(stabilization = TRUE) %>% 
-  visEdges(smooth = FALSE) %>% 
-  visInteraction(navigationButtons = TRUE)
+visNetwork(nodes, edges, height = "700px", width = "100%") #%>% 
+# visGroups(groupname = 'No', color='blue') %>% 
+# visGroups(groupname = 'Yes', color = 'red') %>% 
+# visOptions(highlightNearest = list(enabled = T, degree = 2),
+#            nodesIdSelection = TRUE) %>% 
+# visPhysics(stabilization = TRUE) %>% 
+# visEdges(smooth = FALSE) %>% 
+# visInteraction(navigationButtons = TRUE)
 
-1
 ```
 
 # Full table
@@ -279,138 +405,11 @@ TF_gene_stats %>% dplyr::select(motif = motif_core, Gene:padj, motif_full = moti
 
 # Count number of genes associated with each TFBS
 ```{r}
-TF_gene_stats %>% group_by(motif_core) %>% summarise(count = n(), Gene = paste(Gene, collapse = ',') ) %>% arrange(-count) %>% DT::datatable()
+TF_gene_stats %>% group_by(motif_core) %>% summarise(count = n(), Gene = paste(Gene, collapse = ',') ) %>% arrange(-count) %>% DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
 ```
 
 # Most common genes associated with TF
 ```{r}
 TF_gene_stats %>% group_by(Gene) %>% summarise(count = n(), motif = paste(motif_core, collapse=',')) %>% arrange(-count) %>%  DT::datatable( filter = list(position = 'top', clear = FALSE))
 ```
-
-
-# Network
-No more than 5 genes assigned to a single TF. Picking the top 5 genes by delta of `r params$comparison_1` peaks - `r params$comparison_2` peaks, then breaking ties by taking the most differentially expressed by bulk RNA-seq RPE vs iPSC. 
-
-Red are the homer ID'ed TF(BS)
-
-Pink are genes labelled as TF by GO term (but not ID'ed by homer)
-
-If you hover you get the log2FC
-
-You can zoom in and out
-
-Clicking on a node gives you all the other nodes within 2 edges
-```{r, fig.height=6, fig.width=6}
-library(visNetwork, warn.conflicts=F, quietly=T)
-TF_gene_stats_n <- TF_gene_stats %>% 
-  # filter(!grepl('GATA', motif_core)) %>% 
-  group_by(motif_core) %>% 
-  filter(delta > 2) %>% 
-  # top_n(5, delta) %>% # no more than n by tF 
-  mutate(`(abs)log2FC` = abs(log2FoldChange)) %>% 
-  #top_n(5,`(abs)log2FC`) %>% 
-  #filter(!Gene %in% c('FZD8','OPCML','PFKP','NRIP1','TSHZ3', 'SOX6')) %>% # trimming out most common genes between TF
-  ungroup()
-
-TF <- TF_gene_stats_n %>%
-  distinct(motif_core) %>%
-  rename(label = motif_core)
-
-genes <- TF_gene_stats_n %>%
-  distinct(Gene) %>%
-  rename(label = Gene)
-
-expression_TF <- left_join(expression, tf_gene, by = 'Gene')
-
-nodes <- full_join(TF, genes, by = "label") %>%  
-  arrange(label) %>% rowid_to_column("id") %>% 
-  mutate(group = case_when(label %in% TF$label ~ 'TF', 
-                           TRUE ~ 'Gene')) %>% 
-  left_join(., expression_TF %>% 
-              select(Gene, value = log2FoldChange, goTF = TF) %>% 
-              unique(), by = c("label" = "Gene")) %>% 
-  mutate(title = paste0('Gene: ', label, '<br>log2FC: ', round(value,2))) %>% 
-  mutate(value = 10 ** value) %>% 
-  mutate(group = case_when(group == 'TF' ~ 'TF',
-                           goTF == 'Yes' ~ 'goTF',
-                           TRUE ~ 'Gene'))
-
-
-edges <- TF_gene_stats_n %>%  
-  select(TF = motif_core, Gene, weight = log2FoldChange) %>% 
-  unique() %>% 
-  left_join(nodes, by = c("TF" = "label")) %>% 
-  rename(from = id) %>% 
-  left_join(nodes, by = c("Gene" = "label")) %>% 
-  rename(to = id) %>% 
-  ungroup() %>% 
-  select(from, to, weight) 
-
-visNetwork(nodes, edges, height = "700px", width = "100%") %>% 
-  visGroups(groupname = 'TF', color='red') %>% 
-  visGroups(groupname = 'goTF', color = 'pink') %>% 
-  visOptions(highlightNearest = list(enabled = T, degree = 2),
-             nodesIdSelection = TRUE) %>% 
-  visPhysics(stabilization = TRUE) %>% 
-  visEdges(smooth = FALSE) %>% 
-  visInteraction(navigationButtons = TRUE)
-```
-
-# GO Term Enrichment of Gene List
-```{r, echo = T, warning=F, message = F}
-ids <- clusterProfiler::bitr(expression$Gene, fromType="SYMBOL", toType=c("UNIPROT", "ENSEMBL", "ENTREZID"), OrgDb="org.Hs.eg.db")
-
-set <- clusterProfiler::bitr(TF_gene_stats$Gene %>% unique(),
-                             fromType="SYMBOL",
-                             toType="ENTREZID",
-                             OrgDb = "org.Hs.eg.db")
-
-
-
-
-ego_bp <- clusterProfiler::enrichGO(gene          = set$ENTREZID,
-                                    universe      = ids$ENTREZID %>% unique(),
-                                    OrgDb         = org.Hs.eg.db,
-                                    ont           = "BP",
-                                    pool = TRUE,
-                                    pAdjustMethod = "BH",
-                                    pvalueCutoff = 0.1,
-                                    qvalueCutoff = 0.1,
-                                    keyType = 'ENTREZID',
-                                    readable      = TRUE)
-
-ego2_bp <- clusterProfiler::simplify(ego_bp, cutoff=0.7, by="p.adjust", select_fun=min)
-
-ego_mf <- clusterProfiler::enrichGO(gene          = set$ENTREZID,
-                                    universe      = ids$ENTREZID %>% unique(),
-                                    OrgDb         = org.Hs.eg.db,
-                                    ont           = "MF",
-                                    pool = TRUE,
-                                    pAdjustMethod = "BH",
-                                    qvalueCutoff = 0.1,
-                                    keyType = 'ENTREZID',
-                                    readable      = TRUE)
-
-ego2_mf <- clusterProfiler::simplify(ego_mf, cutoff=0.7, by="p.adjust", select_fun=min)
-
-ego2_bp_out <- ego2_bp %>% data.frame() %>%  mutate(geneID = gsub('/', '<br>', geneID)) %>%  mutate_at(.vars=vars(pvalue,p.adjust,qvalue), .funs=funs(formatC(., format = "e", digits = 2))) 
-
-ego2_mf_out <- ego2_mf %>% data.frame() %>%  mutate(geneID = gsub('/', '<br>', geneID)) %>%  mutate_at(.vars=vars(pvalue,p.adjust,qvalue), .funs=funs(formatC(., format = "e", digits = 2)))
-
-bind_rows(ego2_bp_out %>% mutate(ONT = 'BP'), ego2_mf_out %>% mutate(ONT = 'MF')) %>% arrange(pvalue) %>% DT::datatable(rownames = FALSE, escape = FALSE)
-```
-
-# KEGG Pathway Enrichment
-```{r, fig.width=5}
-kegg <- clusterProfiler::enrichKEGG(gene         = set$ENTREZID,
-                                    organism     = 'hsa', 
-                                    pvalueCutoff = 1)
-kegg <- DOSE::setReadable(kegg,  OrgDb = org.Hs.eg.db, keytype = 'ENTREZID')
-
-kegg %>% data.frame() %>%  
-  mutate(geneID = gsub('/', '<br>', geneID)) %>%  
-  mutate_at(.vars=vars(pvalue,p.adjust,qvalue), .funs=funs(formatC(., format = "e", digits = 2))) %>% 
-  DT::datatable(rownames = FALSE, escape = FALSE) 
-
-kegg %>% data.frame() %>% mutate(Terms = paste(ID, Description)) %>% head(10) %>% mutate(Terms =factor(Terms, levels = Terms %>% rev())) %>%  ggplot(aes(x=Terms, y= -log10(pvalue))) + geom_bar(stat='identity') + theme_minimal() + coord_flip() + xlab('-log10(p value')
 
