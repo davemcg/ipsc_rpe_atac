@@ -46,10 +46,6 @@ for line in metadata:
 		old_sample = list(set(old_sample))
 		old_sample.append(sample)
 		TYPE_SAMPLE[cell_type] = old_sample
-		
-#print(SAMPLE_RUN)
-#print(SAMPLE_PATH)
-#print(TYPE_SAMPLE)
 #
 def fastq_pair_maker(wildcards):
 	if 'SRR' in wildcards.lane_sample:
@@ -83,7 +79,7 @@ localrules: pull_lane_fastq_from_nisc_or_sra, retrieve_and_process_black_list, b
 	TF_to_target,  highlighted_homer_motif, cat_homer_annotate_peak, \
 	intersect_homer_motifs_with_all_common_peaks, clean_all_common_peaks, \
 	ucsc_view_homer_motifs, ucsc_view_bigWig, ucsc_view_common_peaks, \
-	closest_TSS_each_cell_type, unique_peaks, \
+	closest_TSS_each_cell_type, unique_peaks, union_HINT_by_type, \
 	filter_down_all_common_peaks, intersect_homer_motifs_with_comparison_peaks
 
 wildcard_constraints:
@@ -94,15 +90,16 @@ wildcard_constraints:
 
 rule all:
 	input:
-		expand('macs_peak/{comparison}_common_peaks.blackListed.narrowPeak', comparison = config['peak_comparison_pair']),
-		expand('homer/{cell_type}_{num}_homer_TFBS_run/knownResults_{num}.html', cell_type = ['GFP_ATAC-Seq'], num = [1,2,3,4,5,6,7,8]),
+		expand('merged_bam_HQ/{cell_type}.q5.rmdup.bam', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
+	##	expand('macs_peak/{comparison}_common_peaks.blackListed.narrowPeak', comparison = config['peak_comparison_pair']),
+	##	expand('homer/{cell_type}_{num}_homer_TFBS_run/knownResults_{num}.html', cell_type = ['GFP_ATAC-Seq'], num = [1,2,3,4,5,6,7,8]),
 	#	expand('macs_peak/{cell_type}_common_peaks.blackListed.closestTSS.narrowPeak', cell_type = ['GFP_ATAC-Seq']),
 	#	expand('computeMatrix/{cell_type}.matrix.gz', cell_type = ['IPSC_ChIP_h3k27ac','GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
 	#	expand('CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM_score.tsv', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
 	#	expand('macs_peak/{cell_type}_common_peaks.h3k27ac_intersect.blackListed.narrowPeak', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq'])
 	#	expand('fastq/{SRA_runs}_pass.fastq.gz', SRA_runs = [x for x in list(itertools.chain.from_iterable(SAMPLE_RUN.values()))]),
 		#expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}.bw', sample = list(SAMPLE_PATH.keys())),
-		expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}_peaks.blackListed.hg19.narrowPeak.bb', sample = list(SAMPLE_PATH.keys())),
+	##	expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}_peaks.blackListed.hg19.narrowPeak.bb', sample = list(SAMPLE_PATH.keys())),
 		#'deeptools/multiBamSummary.npz',
 		#'deeptools/multiBamSummary.tsv',
 		#'metrics/reads_by_sample.txt',
@@ -110,10 +107,10 @@ rule all:
 	#	expand('downsample_bam/{sample}.q5.rmdup.ds.bam', sample = list(SAMPLE_PATH.keys())),
 		#expand('msCentipede/closest_TSS/{cell_type}.{motif}.closestTSS.dat.gz', cell_type = list(TYPE_SAMPLE.keys()), motif = config['motif_IDs']),
 		#expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{motif}.union.HQ.pretty.bb', motif = config['motif_IDs']),
-		'/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_peaks.blackListed.narrowPeak.bb',
-		'/data/mcgaugheyd/datashare/hufnagel/hg19/interesting_homer_motif.bb',
-		#expand('homer_unique_peaks_{comparison}/{peak_type}/homerResults.html', comparison = config['peak_comparison_pair'], peak_type = ['all','enhancers','promoters']), 
-		expand('network_reports/{comparison}_{peak_type}/{comparison}_{peak_type}_networkAnalysis.html', comparison = config['peak_comparison_pair'], peak_type = ['all','enhancers','promoters']),
+		#'/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_peaks.blackListed.narrowPeak.bb',
+		#'/data/mcgaugheyd/datashare/hufnagel/hg19/interesting_homer_motif.bb',
+		expand('homer_unique_peaks_{comparison}/{peak_type}/homerResults.html', comparison = config['peak_comparison_pair'], peak_type = ['all','enhancers','promoters']), 
+	##	expand('network_reports/{comparison}_{peak_type}/{comparison}_{peak_type}_networkAnalysis.html', comparison = config['peak_comparison_pair'], peak_type = ['all','enhancers','promoters']),
 	#	expand('CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM.tsv', cell_type = list(TYPE_SAMPLE.keys()))
 
 rule pull_lane_fastq_from_nisc_or_sra:
@@ -237,6 +234,18 @@ rule filter_bam:
 		samtools index {output.bam}
 		rm {output.bam}TEMP*
 		"""
+
+rule cell_type_bam:
+	input:
+		lambda wildcards: expand('merged_bam_HQ/{sample}.q5.rmdup.bam', sample = TYPE_SAMPLE[wildcards.cell_type])
+	output:
+		'merged_bam_HQ/{cell_type}.q5.rmdup.bam'
+	shell:
+		"""
+		module load {config[samtools_version]}
+		samtools merge -O bam {output} {input}
+		samtools index {output}
+		"""	
 
 # downsample to 50e6 reads
 rule downsample:
@@ -422,89 +431,6 @@ rule build_tss_regions:
 		awk '{{if($3 < 1) {{$3 = 1}} print}}' {output.tssT2} > {output.tssG}
 		"""
 
-
-
-# find closest TSS/transcript to each TFBS
-# finds 10 closest (-k 10)
-# why so high? because I'm thinking that a bunch of similar transcripts 
-# will artificially inflate the hits
-# I want the two closest genes
-# I'll collapse the tx into genes later in R
-rule find_closest_TSS:
-	input:
-		tsv = 'msCentipede/{cell_type}/{motif}.posterior.HQ.tsv',
-		tss = 'annotation/tss_hg19.bed'
-	output:
-		'msCentipede/closest_TSS/{cell_type}.{motif}.closestTSS.dat.gz'
-	shell:
-		"""
-		module load {config[bedtools_version]}
-		cat {input.tsv} | \
-			sort -k1,1 -k2,2n | \
-					closestBed -g <( sort -k1,1 -k2,2n {config[bwa_genome_sizes]} ) \
-						-k 10 -d -a - -b <( sort -k1,1 -k2,2n {input.tss} ) | \
-			gzip -f > {output}
-		"""
-
-# create superset of all TFBS grouped by TFBS
-rule union_TFBS:
-	input:
-		expand('msCentipede/{cell_type}/{{motif}}.posterior.HQ.tsv', cell_type  = list(TYPE_SAMPLE.keys()))
-	output:
-		'msCentipede_TFBS/{motif}.union.HQ.tsv'
-	shell:
-		"""
-		cat {input} | sort -k1,1 -k2,2n > {output}
-		"""
-
-# reformat union_TFBS to turn into proper bed and prep for UCSC viewing
-rule prettify_union_TFBS:
-	input:
-		'msCentipede_TFBS/{motif}.union.HQ.tsv'
-	output:
-		'msCentipede_TFBS/{motif}.union.HQ.pretty.bed'
-	run:
-		tsv = open(input[0])
-		out = open(output[0], 'w')
-		out.write("track name=\"" + wildcards.motif + "\" description=\"" + wildcards.motif + " msCentipede TFBS\" visibility=2 itemRgb=\"On\"\n")
-		for line in tsv:
-			line = line.split()
-			new_line = line[0] + '\t' + line[1] + '\t' + line[2] + '\t' + line[5] + '\t' + line[4] + '\t' + line[3] + '\t' + line[1] + '\t' + line[2]  
-			if 'IPSC' in line[5]:
-				out.write(new_line + '\t0,0,255\n')
-			elif 'GFP' in line[5]:
-				out.write(new_line + '\t0,255,0\n')
-			else:
-				out.write(new_line + '\t255,0,0\n')
-		tsv.close()
-		out.close()
-
-# make bigBed for ucsc
-# turn score into int and cap at 1000
-rule union_TFBS_pretty_ucsc:
-	input:
-		'msCentipede_TFBS/{motif}.union.HQ.pretty.bed'
-	output:
-		nohead = temp('msCentipede_TFBS/{motif}.union.HQ.pretty.bedNOHEAD'),
-		scorefix = temp('msCentipede_TFBS/{motif}.union.HQ.pretty.bedSCOREFIX'),
-		bb = '/data/mcgaugheyd/datashare/hufnagel/hg19/{motif}.union.HQ.pretty.bb'
-	params:
-		base_path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/'
-	run:
-		shell("tail -n +2 {input} > {output.nohead}")
-		data = open(output.nohead)
-		out = open(output.scorefix, 'w')
-		for line in data:
-			line = line.split()
-			score = int(float(line[4]))
-			if score >= 1000:
-				score = 999
-			line[4] = str(score)
-			out.write('\t'.join(line) + '\n')
-		data.close()
-		out.close()
-		shell("module load ucsc; \
-			bedToBigBed {output.scorefix} /data/mcgaugheyd/genomes/hg19/hg19.chrom.sizes {output.bb}")
 		
 rule union_peaks_by_type:
 	input:
@@ -599,7 +525,70 @@ rule overlap_with_h3k27ac:
 					bedtools intersect -a {input.atac} -b <(zcat {input.rpe1} {input.rpe2} {input.rpe3} \
 					{input.rpe4} {input.rpe5} {input.rpe6} {input.rpe7} {input.rpe8} {input.rpe9} | sort -k1,1 -k2,2n) -c | \
 					awk '$13 > 2 {{print $0}}' > {output}")
-		
+
+# run HINT to find footprints within peaks
+# run for each individual sample
+rule HINT:
+	input:
+		peaks = 'macs_peak/{sample}_peaks.narrowPeak',
+		bam = 'merged_bam_HQ/{sample}.q5.rmdup.bam'
+	output:
+		'HINT/{sample}.bed'
+	shell:
+		"""
+		module unload python
+		module load {config[rgt_version]}
+		module load {config[samtools_version]}
+		grep -v "gl0\|hap\|TYR" {input.peaks} > {input.peaks}GREP
+		samtools view -bL chrs.bed {input.bam} > {input.bam}CHRS
+		samtools index {input.bam}CHRS
+		rgt-hint footprinting \
+			--atac-seq \
+			--paired-end \
+			--organism=hg19 \
+			--output-prefix {wildcards.sample} \
+			--output-location=HINT \
+			{input.bam}CHRS \
+			{input.peaks}GREP
+		sed -i 's/[[:blank:]]*$//' {output}
+		rm {input.bam}CHRS
+		rm {input.peaks}GREP
+		"""
+
+# keep footprints which are seen twice or more within a cell type
+rule union_HINT_by_type:
+	input:
+		lambda wildcards: expand('HINT/{sample}.bed', sample = TYPE_SAMPLE[wildcards.cell_type])
+	output:
+		union = 'HINT/{cell_type}.bed',
+		merge = 'HINT/{cell_type}.merge.bed',
+		intersect = 'HINT/{cell_type}.intersect.bed',
+		processed = 'HINT/{cell_type}.intersect.colors.bed'
+	run:
+		shell("cat {input} | sort -k1,1 -k2,2n > {output.union}")
+		shell("module load {config[bedtools_version]}; \
+			bedtools merge -i {output.union} -c 5 -o mean > {output.merge}")
+		shell("module load {config[bedtools_version]}; \
+			bedtools intersect -a {output.merge} -b {output.union} -c -f 0.4 | awk '$5>1 {{print $0}}' > {output.intersect}")
+		tsv = open(output[2])
+		out = open(output[3], 'w')
+		if wildcards.cell_type == 'RFP_ATAC-Seq':
+			color = '255,0,0'
+		elif wildcards.cell_type == 'GFP_ATAC-Seq':
+			color = '0,255,0'
+		elif wildcards.cell_type == 'IPSC_ATAC-Seq':
+			color = '0,0,255'
+		else:
+			color = '255,255,255'
+		for line in tsv:
+			line = line.split()
+			line[3] = str(min(999, round(float(line[3])))) # round for bigBed, no more than 999
+			new_line = '\t'.join(line) + '\t1\t.\t' + line[1] + '\t' + line[2] + '\t' + color + '\n'	
+			out.write(new_line)
+		tsv.close()
+		out.close()
+
+
 # reformat union_TFBS to turn into proper bed and prep for UCSC viewing
 rule prettify_peaks:
 	input:
@@ -769,7 +758,8 @@ rule prep_direct_summits_for_homer:
 # run homer on unique_peaks
 rule homer_find_motifs_unique_peaks:
 	input:
-		peak = 'macs_peak/{comparison}_common_peaks.blackListed.summits.bed',
+		hint = expand('HINT/{cell_type}.intersect.colors.bed', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
+		peak = 'macs_peak/{comparison}_common_peaks.blackListed.narrowPeak',
 		tss = 'annotation/tss_hg19.bed'
 	output:
 		known = 'homer_unique_peaks_{comparison}/{peak_type}/knownResults.html',
@@ -780,15 +770,21 @@ rule homer_find_motifs_unique_peaks:
 		8
 	run:
 		shell('mkdir -p {params.out_dir}')
+		hint_peak = 'HINT/' + wildcards.comparison.split('__')[0] + '.intersect.colors.bed'
 		if wildcards.peak_type == 'all':
-			shell("module load {config[homer_version]}; \
-					findMotifsGenome.pl <(awk '$4>99 {{print $0}}' {input.peak}) hg19 {params.out_dir} -p {threads} -size 100 -preparsedDir homer_preparsed/")
+			shell("module load {config[homer_version]}; module load {config[bedtools_version]}; \
+					findMotifsGenome.pl <(intersectBed -a " + hint_peak + " -b {input.peak} -wa | awk '$4>50 {{print $0}}') \
+						hg19 {params.out_dir} -p {threads} -size given -preparsedDir homer_preparsed/")
 		elif wildcards.peak_type == 'enhancers':
-			shell("module load {config[homer_version]}; \
-					findMotifsGenome.pl <(awk '$4>99 {{print $0}}' {input.peak} | intersectBed -a - -b {input.tss} -v ) hg19 {params.out_dir} -p {threads} -size 100 -preparsedDir homer_preparsed/")
+			shell("module load {config[homer_version]};  module load {config[bedtools_version]}; \
+					findMotifsGenome.pl <(intersectBed -a " + hint_peak + " -b {input.peak} | \
+							awk '$4>50 {{print $0}}' | intersectBed -a - -b {input.tss} -v ) \
+						hg19 {params.out_dir} -p {threads} -size given -preparsedDir homer_preparsed/")
 		else: # promoter
-			shell("module load {config[homer_version]}; \
-					findMotifsGenome.pl <(awk '$4>99 {{print $0}}' {input.peak} | intersectBed -a - -b {input.tss} ) hg19 {params.out_dir} -p {threads} -size 100 -preparsedDir homer_preparsed/")
+			shell("module load {config[homer_version]};  module load {config[bedtools_version]}; \
+					findMotifsGenome.pl <(intersectBed -a " + hint_peak + " -b {input.peak} | \
+							awk '$4>50 {{print $0}}' | intersectBed -a - -b {input.tss} ) \
+						hg19 {params.out_dir} -p {threads} -size given -preparsedDir homer_preparsed/")
 
 localrules: homer_annotate_peaks
 # label unique_peaks with motifs that homer finds
@@ -864,10 +860,25 @@ rule cat_homer_annotate_peaks:
 		cat {input.motifs} | grep -v "track name" | uniq | sort -k1,1 -k2,2n | uniq | bgzip -cf > {output}
 		"""
 
+# process 'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.bed'
+# only keep two closest genes under 500,00bp away
+# also clean up the column fields a bit
+rule clean_all_common_peaks:
+	input:
+		'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.bed'
+	output:
+		'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.cleaned.bed'
+	shell:
+		"""
+		module load {config[R_version]}
+		Rscript /home/mcgaugheyd/git/ipsc_rpe_atac/src/merge_peaks_homer_motifs.R {input} 2 {output}
+		"""
+
 # intersect homer motif bed 'peak_full/homer/interesting_homer_motif.bed.gz' 
 # with all 'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.bed'
 rule intersect_homer_motifs_with_comparison_peaks:
 	input:
+		peak_gene = 'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.cleaned.bed',
 		a = 'macs_peak/{comparison}_common_peaks.blackListed.narrowPeak',
 		b = 'peak_full/homer_{comparison}/{peak_type}/all_homer_motif.bed.gz'
 	output:
@@ -876,7 +887,9 @@ rule intersect_homer_motifs_with_comparison_peaks:
 		"""
 		module load {config[bedtools_version]}
 		module load {config[samtools_version]}
-		intersectBed -a <(sort -k1,1 -k2,2n {input.a}) -b {input.b} -wa -wb -sorted | bgzip -cf > {output}
+		LC_ALL=C
+		intersectBed -a {input.a} -b {input.peak_gene} -wb | sort -k1,1 -k2,2n | \
+			intersectBed -a stdin -b {input.b} -wa -wb -sorted | bgzip -cf > {output}
 		"""
 
 # create network analysis R report
@@ -961,6 +974,7 @@ rule TF_gene_punctate_R:
 		'punctate/punctate_analysis_{num}.txt'
 	shell:
 		"""
+		module load {config[pandoc_version]}
 		module load {config[R_version]}
 		Rscript -e "rmarkdown::render('/home/mcgaugheyd/git/ipsc_rpe_atac/src/punctate_CGM_analysis.Rmd')"
 		"""
