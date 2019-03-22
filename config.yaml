@@ -13,15 +13,14 @@ mosdepth_version: 'mosdepth/0.2.0'
 meme_version: 'meme/4.12.0'
 downsamples_reads: 20000000
 motif_bootstrap_num: 2
-rgt_version: 'rgt/0.11.3'
+rgt_version: 'rgt/0.11.8'
 gtf_file: '/data/mcgaugheyd/genomes/1000G_phase2_GRCh37/gencode.v28lift37.basic.annotation.gtf.gz'
 gtf_metadata: '/data/mcgaugheyd/genomes/1000G_phase2_GRCh37/gencode.v28lift37.metadata.HGNC.gz'
 diff_expression_value: 1
+pandoc_version: 'pandoc/2.1.1'
+homer_version: 'homer/4.10.1'
 diff_expression_csv: '/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/RPE_vs_iPSC.results.csv'
-cisbp_metadata_file: '/data/mcgaugheyd/motifs/TF_Information.txt'
-meme_cisbp_path: '/data/mcgaugheyd/motifs/meme_motifs'
-motif_IDs: ['M5771_1.02__RAX', 'M5965_1.02__ZIC4', 'M5518_1.02__HMX1', 'MEIS1_HUMAN.H11MO.0.A', 'ZN322_HUMAN.H11MO.0.B', 'SMAD3_HUMAN.H11MO.0.B', 'COE1_HUMAN.H11MO.0.A', 'ASCL1_HUMAN.H11MO.0.A', 'M5504_1.02__HES5', 'M6271_1.02__HES1', 'M6176_1.02__NR2F1', 'SOX9_HUMAN.H11MO.0.B', 'SOX10_HUMAN.H11MO.0.B', 'MITF_HUMAN.H11MO.0.A', 'M6411_1.02__PAX8', 'RXRB_DBD', 'CTCF_HUMAN.H11MO.0.A','PAX6_HUMAN.H11MO.0.C','AP2A_HUMAN.H11MO.0.A','AP2B_HUMAN.H11MO.0.B','COT1_HUMAN.H11MO.0.C','COT2_HUMAN.H11MO.0.A','CRX_HUMAN.H11MO.0.B','FOXQ1_HUMAN.H11MO.0.C','LHX2_HUMAN.H11MO.0.A','MEIS2_HUMAN.H11MO.0.B','NR1H4_HUMAN.H11MO.0.B','OTX2_HUMAN.H11MO.0.A','RXRA_HUMAN.H11MO.0.A','RXRG_HUMAN.H11MO.0.B','SOX3_HUMAN.H11MO.0.B','TBX21_HUMAN.H11MO.0.A']
 R_version: 'R/3.5.0'
 msCentipede_version: 'mscentipede/1.0'
-peak_comparison_pair: ['GFP_ATAC-seq__not__IPSC_ATAC-seq','GFP_ATAC-seq__not__RFP_ATAC-seq', 'RFP_ATAC-seq__not__GFP_ATAC-seq']
+peak_comparison_pair: ['GFP_ATAC-Seq__not__IPSC_ATAC-Seq','GFP_ATAC-Seq__not__RFP_ATAC-Seq', 'RFP_ATAC-Seq__not__IPSC_ATAC-Seq']
 homer_version: 'homer/4.10.1'

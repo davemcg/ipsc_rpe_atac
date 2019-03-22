@@ -90,7 +90,11 @@ wildcard_constraints:
 
 rule all:
 	input:
-		expand('merged_bam_HQ/{cell_type}.q5.rmdup.bam', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
+		expand('HINT/{cell_type}.intersect.colors_mpbs.bed', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
+		expand('HINT_{comparison}/{chunk}/', \
+			comparison = config['peak_comparison_pair'], \
+			chunk = ['xaa','xab','xac','xad','xae','xaf','xag','xah','xai','xaj','xak','xal','xam','xan','xao','xap','xaq','xar','xas','xat','xau','xav','xaw','xax','xay','xaz','xba','xbb','xbc','xbd','xbe','xbf','xbg','xbh','xbi','xbj','xbk','xbl','xbm','xbn','xbo','xbp','xbq','xbr','xbs','xbt','xbu','xbv','xbw','xbx','xby','xbz','xca','xcb','xcc','xcd','xce','xcf','xcg','xch','xci','xcj','xck','xcl','xcm','xcn','xco','xcp','xcq','xcr','xcs','xct','xcu','xcv','xcw','xcx','xcy','xcz','xda','xdb','xdc','xdd','xde','xdf','xdg','xdh','xdi','xdj','xdk','xdl','xdm','xdn','xdo','xdp','xdq','xdr','xds','xdt','xdu','xdv']),
+	#	expand('merged_bam_HQ/{cell_type}.q5.rmdup.bam', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
 	##	expand('macs_peak/{comparison}_common_peaks.blackListed.narrowPeak', comparison = config['peak_comparison_pair']),
 	##	expand('homer/{cell_type}_{num}_homer_TFBS_run/knownResults_{num}.html', cell_type = ['GFP_ATAC-Seq'], num = [1,2,3,4,5,6,7,8]),
 	#	expand('macs_peak/{cell_type}_common_peaks.blackListed.closestTSS.narrowPeak', cell_type = ['GFP_ATAC-Seq']),
@@ -209,7 +213,7 @@ rule merge_bam:
 		samtools index {output.bam}
 		"""
 
-# remove dups, only keep reads with over q 5
+# remove dups, only keep mapped (-F 4) reads with over q 5
 rule filter_bam:
 	input:
 		'merged_bam/{sample}.bam'
@@ -222,7 +226,7 @@ rule filter_bam:
 		"""
 		module load {config[samtools_version]}
 		module load {config[picard_version]}
-		samtools view -O bam -q 5 -b {input} | \
+		samtools view -O bam -F 4 -q 5 -b {input} | \
 			samtools sort - -O bam -o {output.bam}TEMP
 		samtools index {output.bam}TEMP
 		java -Xmx4g -XX:ParallelGCThreads={threads} -jar $PICARDJARPATH/picard.jar \
@@ -528,8 +532,10 @@ rule overlap_with_h3k27ac:
 
 # run HINT to find footprints within peaks
 # run for each individual sample
+# remove if peak in blacklist
 rule HINT:
 	input:
+		blacklist = '/data/mcgaugheyd/genomes/hg19/ENCFF001TDO.bed.gz',
 		peaks = 'macs_peak/{sample}_peaks.narrowPeak',
 		bam = 'merged_bam_HQ/{sample}.q5.rmdup.bam'
 	output:
@@ -539,7 +545,8 @@ rule HINT:
 		module unload python
 		module load {config[rgt_version]}
 		module load {config[samtools_version]}
-		grep -v "gl0\|hap\|TYR" {input.peaks} > {input.peaks}GREP
+		module load {config[bedtools_version]}
+		grep -v "gl0\|hap\|TYR" {input.peaks} | intersectBed -a - -b {input.blacklist} -v > {input.peaks}GREP
 		samtools view -bL chrs.bed {input.bam} > {input.bam}CHRS
 		samtools index {input.bam}CHRS
 		rgt-hint footprinting \
@@ -556,20 +563,24 @@ rule HINT:
 		"""
 
 # keep footprints which are seen twice or more within a cell type
+# also overlap peaks seen in two or more cell types
 rule union_HINT_by_type:
 	input:
-		lambda wildcards: expand('HINT/{sample}.bed', sample = TYPE_SAMPLE[wildcards.cell_type])
+		hint = lambda wildcards: expand('HINT/{sample}.bed', sample = TYPE_SAMPLE[wildcards.cell_type]),
+		common_peaks = 'macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak'
 	output:
 		union = 'HINT/{cell_type}.bed',
 		merge = 'HINT/{cell_type}.merge.bed',
 		intersect = 'HINT/{cell_type}.intersect.bed',
 		processed = 'HINT/{cell_type}.intersect.colors.bed'
 	run:
-		shell("cat {input} | sort -k1,1 -k2,2n > {output.union}")
+		shell("cat {input.hint} | sort -k1,1 -k2,2n > {output.union}")
 		shell("module load {config[bedtools_version]}; \
 			bedtools merge -i {output.union} -c 5 -o mean > {output.merge}")
 		shell("module load {config[bedtools_version]}; \
-			bedtools intersect -a {output.merge} -b {output.union} -c -f 0.4 | awk '$5>1 {{print $0}}' > {output.intersect}")
+			bedtools intersect -a {output.merge} -b {output.union} -c -f 0.4 | \
+			awk '$5>1 {{print $0}}' | \
+			bedtools intersect -a - -b {input.common_peaks} > {output.intersect}")
 		tsv = open(output[2])
 		out = open(output[3], 'w')
 		if wildcards.cell_type == 'RFP_ATAC-Seq':
@@ -587,6 +598,75 @@ rule union_HINT_by_type:
 			out.write(new_line)
 		tsv.close()
 		out.close()
+
+# scan for HOCOMOCO motifs in HINT footprint
+rule HINT_motif_scan:
+	input:
+		'HINT/{cell_type}.intersect.colors.bed'
+	output:
+		'HINT/{cell_type}.intersect.colors_mpbs.bed'
+	shell:
+		"""
+		mkdir -p HINT_motif_scan
+		module load {config[rgt_version]}
+		rgt-motifanalysis matching --motif-dbs $RGTDATA/motifs/hocomoco \
+			--organism=hg19 \
+			--input-files {input} \
+			--output-location HINT
+		"""
+
+localrules: make_chunks
+rule make_chunks:
+	input:
+		'HINT/{cell_type}.intersect.colors_mpbs.bed'
+	output:
+		'HINT/chunks/{cell_type}_TF'
+	shell:
+		"""
+		mkdir -p HINT/chunks
+		cut -f4 {input} | cut -f1 -d'_' | sort | uniq  > {output} 
+		split -n 100 --additional-suffix {wildcards.cell_type} {output}
+		"""
+
+localrules: HINT_motif_scan_chunker
+# break HINT scanned motif bed into
+# 100 chunks by motif
+rule HINT_motif_scan_chunker:
+	input:
+		footprint = 'HINT/{cell_type}.intersect.colors_mpbs.bed',
+		chunks = 'HINT/chunks/{cell_type}_TF'
+	output:
+		'HINT/chunks/{cell_type}.{chunk}.intersect.colors_mpbs.bed'
+	shell:
+		"""
+		LC_ALL=C
+		grep -f {wildcards.chunk}{cell_type} {input.footprint} > {output}
+		"""
+	
+# differential footprint testing
+rule HINT_differential:
+	input:
+		motif_A = lambda wildcards: 'HINT/chunks/' + wildcards.comparison.split('__not__')[0] + '.{chunk}.intersect.colors_mpbs.bed',
+		motif_B = lambda wildcards: 'HINT/chunks/' + wildcards.comparison.split('__not__')[1] + '.{chunk}.intersect.colors_mpbs.bed',
+		bam_A = lambda wildcards: 'merged_bam_HQ/' + wildcards.comparison.split('__not__')[0] + '.q5.rmdup.bam',
+		bam_B = lambda wildcards: 'merged_bam_HQ/' + wildcards.comparison.split('__not__')[1]+ '.q5.rmdup.bam'
+	output:
+		directory = directory('HINT_{comparison}/{chunk}/'),
+#		stats = 'HINT_{comparison}/{chunk}/' + wildcards.comparison.split('__not__')[0].split('_')[0] + '_' + \
+#						wildcards.comparison.split('__not__')[1].split('_')[0] + '_factor.txt'
+	threads: 1 
+	run:
+		shell("mkdir -p {output.directory}")
+		condition1 = wildcards.comparison.split('__not__')[0].split('_')[0]
+		condition2 = wildcards.comparison.split('__not__')[1].split('_')[0]
+		shell("module load {config[rgt_version]}; module load tex; \
+		rgt-hint differential --organism=hg19 --bc --nc {threads} \
+			--mpbs-file1={input.motif_A} \
+			--mpbs-file2={input.motif_B} \
+			--reads-file1={input.bam_A} \
+			--reads-file2={input.bam_B} \
+			--output-location {output.directory} \
+			--condition1=" + condition1 + " --condition2=" + condition2)
 
 
 # reformat union_TFBS to turn into proper bed and prep for UCSC viewing
