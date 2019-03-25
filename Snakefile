@@ -93,7 +93,7 @@ rule all:
 		expand('HINT/{cell_type}.intersect.colors_mpbs.bed', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
 		expand('HINT_{comparison}/{chunk}/', \
 			comparison = config['peak_comparison_pair'], \
-			chunk = ['xaa','xab','xac','xad','xae','xaf','xag','xah','xai','xaj','xak','xal','xam','xan','xao','xap','xaq','xar','xas','xat','xau','xav','xaw','xax','xay','xaz','xba','xbb','xbc','xbd','xbe','xbf','xbg','xbh','xbi','xbj','xbk','xbl','xbm','xbn','xbo','xbp','xbq','xbr','xbs','xbt','xbu','xbv','xbw','xbx','xby','xbz','xca','xcb','xcc','xcd','xce','xcf','xcg','xch','xci','xcj','xck','xcl','xcm','xcn','xco','xcp','xcq','xcr','xcs','xct','xcu','xcv','xcw','xcx','xcy','xcz','xda','xdb','xdc','xdd','xde','xdf','xdg','xdh','xdi','xdj','xdk','xdl','xdm','xdn','xdo','xdp','xdq','xdr','xds','xdt','xdu','xdv']),
+			chunk = ['xaa','xab','xac','xad','xae','xaf','xag','xah','xai','xaj','xak','xal','xam','xan','xao','xap','xaq','xar','xas','xat','xau','xav','xaw','xax','xay','xaz','xba','xbb','xbc','xbd','xbe','xbf','xbg','xbh','xbi','xbj','xbk','xbl','xbm','xbn','xbo','xbp','xbq','xbr','xbs','xbt','xbu','xbv','xbw','xbx','xby','xbz','xca','xcb','xcc','xcd','xce','xcf','xcg','xch','xci','xcj','xck','xcl','xcm','xcn','xco','xcp','xcq','xcr','xcs','xct','xcu','xcv','xcw','xcx','xcy','xcz','xda','xdb','xdc','xdd','xde','xdf','xdg','xdh','xdi','xdj','xdk','xdl','xdm','xdn','xdo','xdp','xdq','xdr','xds','xdt','xdu','xdv','xdw','xdx','xdy','xdz','xea','xeb','xec','xed','xee']),
 	#	expand('merged_bam_HQ/{cell_type}.q5.rmdup.bam', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
 	##	expand('macs_peak/{comparison}_common_peaks.blackListed.narrowPeak', comparison = config['peak_comparison_pair']),
 	##	expand('homer/{cell_type}_{num}_homer_TFBS_run/knownResults_{num}.html', cell_type = ['GFP_ATAC-Seq'], num = [1,2,3,4,5,6,7,8]),
@@ -624,8 +624,8 @@ rule make_chunks:
 	shell:
 		"""
 		mkdir -p HINT/chunks
-		cut -f4 {input} | cut -f1 -d'_' | sort | uniq  > {output} 
-		split -n 100 --additional-suffix {wildcards.cell_type} {output}
+		cut -f4 {input} | sort | uniq  > {output} 
+		split -l 13 --additional-suffix {wildcards.cell_type} {output}
 		"""
 
 localrules: HINT_motif_scan_chunker

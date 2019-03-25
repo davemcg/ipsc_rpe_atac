@@ -91,7 +91,7 @@
 	"HINT_differential" :
 	{
 		"partition" : "norm",
-		"mem" : "48G",
-		"time" : "12:00:00"
+		"mem" : "8G",
+		"time" : "8:00:00"
 	}
 }
