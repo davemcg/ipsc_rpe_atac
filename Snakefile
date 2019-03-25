@@ -585,7 +585,7 @@ rule HINT_motif_scan:
 			color = '0,0,255'
 		else:
 			color = '255,255,255'
-		awk_call = "awk -v OFS='\t' $5<0 {$5=0} '{{print $1,$2,$3,$4,int($5),$6,$2,$3,\"" + color + "\"}}' {output}TEMP > {output}"
+		awk_call = "awk -v OFS='\t' '$5<0 {{$5=0}} {{print $1,$2,$3,$4,int($5),$6,$2,$3,\"" + color + "\"}}' {output}TEMP > {output}"
 		shell(awk_call)
 		shell("rm {output}TEMP")
 
@@ -657,7 +657,7 @@ rule merge_HINT_diff_results:
 		"""
 		cat HINT_{wildcards.comparison}/*/*_statistics.txt | grep "^Motif" | uniq > {output.all}
 		grep -hv "^Motif" HINT_{wildcards.comparison}/*/*_statistics.txt >> {output.all}
-		awk '$NF < 0.1 {{print $0}}' | grep -v "^Motif" | cut -f1 > {output.sig} 
+		awk '$NF < 0.1 {{print $0}}' {output.all} | grep -v "^Motif" | cut -f1 > {output.sig} 
 		"""
 
 # create tss peaks
@@ -678,7 +678,7 @@ rule peaks_in_tss:
 rule common_peaks_across_all:
 	input:
 		hint = expand('HINT/{cell_type}.intersect.colors_mpbs.bed', cell_type  = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq','IPSC_ATAC-Seq']),
-		macs = expand('macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak', cell_type  = list(TYPE_SAMPLE.keys()))
+		macs = expand('macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak', cell_type  = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq','IPSC_ATAC-Seq'])
 	output:
 		hint = 'HINT/all_common_footprints.intersect.colors_mpbs.bed',
 		macs = 'macs_peak/all_common_peaks.blackListed.narrowPeak.bed'
