@@ -25,21 +25,27 @@ Differential Expression: `r params$expression`
 `r params$comparison_1` against `r params$comparison_2`
 
 # Analysis of TFBS <-> gene sets
-The core idea of this analysis is that the most significant HOMER identified TFBS are indeed enriched TFBS between GFP and RFP <-> iPSC and GFP <-> RFP. 
+The core idea of this analysis is that the most significant HINT TFBS footprints thtat are differentially used between GFP and RFP <-> iPSC and GFP <-> RFP. 
 
 I believe these TF(BS) are the best targets to experimentally validate with KO/knockdown in iPSC -> RPE. What is missing are the likely target(s) of the TFBS. What follows is a long and involved process to get a set of genes associated with each TFBS cluster. 
 
 Cluster? That will be explained later, but very briefly, HOMER returns a bunch of TFBS that seems to be highly related and I think should be merged. 
 
-OK, now for a brief description of what HOMER is doing.
+OK, now for a brief description of what HINT is doing.
 
-HOMER works on the peaks unique to GFP (and not RFP) and GFP and RFP (and not iPSC). 
+HINT works on the peaks found by MACS2 for each sample (e.g. GFP_IIE) along with the bam file of the aligned reads. It scans each peak for reads that match a Tn5-like cleavage event (https://genomebiology.biomedcentral.com/articles/10.1186/s13059-019-1642-2). The precise footprint identified is later scanned for motifs that match a TF in the HOCOMOCO database. 
 
-More precisely, HOMER runs on the summits (highest peak intensity / read coverage) and the 100bp surrounding that. The sequenced is scanned against a randomized set of sequences and enriched motifs are identified. The document uses only the knownResults.html file (thus ignoring HOMER's attempt to ID novel motifs). This constricts identification of TFBS to TF with worked out motifs. 
+This approach should be more specific and sensitive than the previous approach of using the 100bp surrounding the summit of a peak as input to HOMER. 
 
-After HOMER IDs TFBS, I then use HOMER again to scan the peak lists for the motifs that were ID'ed. That is the primary input for the document. 
+Furthermore, HINT has a differential mode which takes each identified footprint / motif set and compares ATAC-seq "open-ness" (number of reads) that have the Tn5 cleavage pattern. 
 
-The differential RNA-seq data from iPSC/RFP/GFP is also loaded in to do some more filtering. 
+This allows us to directly find enriched TFBS footprints between samples. 
+
+Each footprint is assigned to the two closest gene TSS within 500,000bp. 
+
+In this manner we get TFBS footprint <-> gene links. 
+
+The differential RNA-seq data from iPSC/RFP/GFP is also loaded in to do additional filtering for 
 
 
 # Data Loading
