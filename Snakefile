@@ -90,6 +90,8 @@ wildcard_constraints:
 
 rule all:
 	input:
+		'network_reports/analysis.html',
+		expand('punctate/punctate_analysis_{num}.txt', num = 1 ),
 		expand('HINT_{comparison}/stats.txt', comparison = config['peak_comparison_pair']),
 		'/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_HINT_footprints.bb',
 	#	expand('merged_bam_HQ/{cell_type}.q5.rmdup.bam', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
@@ -576,7 +578,7 @@ rule HINT_motif_scan:
 				--organism=hg19 \
 				--input-files {input} \
 				--output-location HINT")
-		shell("mv {output} {output}TEMP")
+		shell("sort -k1,1 -k2,2n {output} > {output}TEMP")
 		if wildcards.cell_type == 'RFP_ATAC-Seq':
 			color = '255,0,0'
 		elif wildcards.cell_type == 'GFP_ATAC-Seq':
@@ -621,8 +623,8 @@ rule HINT_motif_scan_chunker:
 # differential footprint testing
 rule HINT_differential:
 	input:
-		motif_A = lambda wildcards: 'HINT/chunks/' + wildcards.comparison.split('__not__')[0] + '.{chunk}.intersect.colors_mpbs.bed',
-		motif_B = lambda wildcards: 'HINT/chunks/' + wildcards.comparison.split('__not__')[1] + '.{chunk}.intersect.colors_mpbs.bed',
+		motif_A = lambda wildcards: ancient('HINT/chunks/' + wildcards.comparison.split('__not__')[0] + '.{chunk}.intersect.colors_mpbs.bed'),
+		motif_B = lambda wildcards: ancient('HINT/chunks/' + wildcards.comparison.split('__not__')[1] + '.{chunk}.intersect.colors_mpbs.bed'),
 		bam_A = lambda wildcards: 'merged_bam_HQ/' + wildcards.comparison.split('__not__')[0] + '.q5.rmdup.bam',
 		bam_B = lambda wildcards: 'merged_bam_HQ/' + wildcards.comparison.split('__not__')[1]+ '.q5.rmdup.bam'
 	output:
@@ -642,8 +644,8 @@ rule HINT_differential:
 			--reads-file2={input.bam_B} \
 			--output-location {output.directory} \
 			--condition1=" + condition1 + " --condition2=" + condition2)
-		shell("mkdir -p HINT_{comparison}/Lineplots")
-		shell("cp {output.directory}/Lineplots/* HINT_{comparison}/Lineplots/")
+		shell("mkdir -p HINT_{wildcards.comparison}/Lineplots")
+		shell("cp {output.directory}/Lineplots/* HINT_{wildcards.comparison}/Lineplots/")
 
 localrules: merge_HINT_diff_results
 rule merge_HINT_diff_results:
@@ -695,12 +697,13 @@ rule HINT_interesting_footprints:
 		footprints = 'HINT/all_common_footprints.intersect.colors_mpbs.bed',
 		sig = expand('HINT_{comparison}/sig_TF.txt', comparison = config['peak_comparison_pair']) 
 	output:
-		'HINT/all_common_footprints.intersect.colors_mpbs.sig_footprints.bed'
+		sig = 'HINT/interesting_tf.txt', 
+		bed = 'HINT/all_common_footprints.intersect.colors_mpbs.sig_footprints.bed'
 	shell:
 		"""
-		cat {input.sig} | sort | uniq  > HINT/interesting_tf.txt
+		cat {input.sig} | sort | uniq  > {output.sig}
 		LC_ALL=C
-		grep -Ff HINT/interesting_tf.txt {input} > {output}
+		grep -hFf {output.sig} {input} | grep "^chr"  > {output.bed}
 		"""
 		
 	
@@ -712,21 +715,22 @@ rule find_closest_TSS_to_all_common:
 		bed = 'macs_peak/all_common_peaks.blackListed.narrowPeak.bed',
 		tss = 'annotation/tss_hg19.bed'
 	output:
-		hint = 'HINT/all_common_footprints.intersect.colors_mpbs.closestTSS.bed',
-		macs = 'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.bed'
+		hint = 'HINT/all_common_footprints.intersect.colors_mpbs.closestTSS.bed.gz',
+		macs = 'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.bed.gz'
 	shell:
 		"""
+		module load samtools
 		module load {config[bedtools_version]}
 		cat {input.bed} | grep -v mm10 | \
 			sort -k1,1 -k2,2n | \
-					closestBed -g <( sort -k1,1 -k2,2n {config[bwa_genome_sizes]} ) \
-						-k 10 -d -a - -b <( sort -k1,1 -k2,2n {input.tss} ) | \
-			gzip -f > {output.macs}
+			closestBed -g <( sort -k1,1 -k2,2n {config[bwa_genome_sizes]} ) \
+				-k 4 -d -a - -b <( sort -k1,1 -k2,2n {input.tss} ) | \
+			bgzip -f > {output.macs}
 
 		cat {input.footprint} | \
 			closestBed -g <( sort -k1,1 -k2,2n {config[bwa_genome_sizes]} ) \
-				-k 10 -d -a - -b <( sort -k1,1 -k2,2n {input.tss} ) | \
-			gzip -f > {output.hint}
+				-k 4 -d -a - -b <( sort -k1,1 -k2,2n {input.tss} ) | \
+			bgzip -f > {output.hint}
 		"""
 
 # filter out unique peaks
@@ -750,28 +754,28 @@ rule unique_peaks:
 # also clean up the column fields a bit
 rule clean_all_common_peaks:
 	input:
-		'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.bed'
+		hint_TF = 'HINT/interesting_tf.txt',
+		hint = 'HINT/all_common_footprints.intersect.colors_mpbs.closestTSS.bed.gz',
+		macs = 'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.bed.gz'
 	output:
-		'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.cleaned.bed'
+		hint = 'HINT/all_common_footprints.intersect.colors_mpbs.closestTSS.cleaned.bed.gz',
+		macs = 'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.cleaned.bed.gz'
 	shell:
 		"""
+		module load samtools
 		module load {config[R_version]}
-		Rscript /home/mcgaugheyd/git/ipsc_rpe_atac/src/merge_peaks_homer_motifs.R {input} 2 {output}
+		zgrep -hFf {input.hint_TF} {input.hint} | bgzip  > {input.hint}GREP
+		Rscript /home/mcgaugheyd/git/ipsc_rpe_atac/src/merge_peaks_homer_motifs.R {input.hint}GREP 2 {output.hint}
+		rm {input.hint}GREP
+		Rscript /home/mcgaugheyd/git/ipsc_rpe_atac/src/merge_peaks_homer_motifs.R {input.macs} 2 {output.macs}
 		"""
 
 # create network analysis R report
 rule TF_gene_network_R:
 	input:
-		full = 'peak_full/homer_{comparison}/{peak_type}/common_peaks.blackListed.narrowPeak__all_homer_motif.bed.gz'
+		full = 'HINT/all_common_footprints.intersect.colors_mpbs.closestTSS.cleaned.bed.gz'
 	output:
-		file = 'network_reports/{comparison}_{peak_type}/{comparison}_{peak_type}_networkAnalysis.html'
-	params:
-		file = '{comparison}_{peak_type}_networkAnalysis.html',
-		folder = 'network_reports/{comparison}_{peak_type}',
-		gfp_vs_ipsc = '/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/GFP_vs_iPSC.results.csv',
-		gfp_vs_rfp = '/home/mcgaugheyd/git/ipsc_rpe_RNA-seq/data/GFP_vs_RFP.results.csv',
-		gfp_vs_ipsc_file = 'GFP_vs_iPSC.results.csv',
-		gfp_vs_rfp_file = 'GFP_vs_RFP.results.csv'
+		file = 'network_reports/analysis.html'
 	run:
 		if wildcards.comparison == 'GFP_ATAC-Seq__not__IPSC_ATAC-Seq':
 			shell("module load {config[R_version]}; \
@@ -793,12 +797,9 @@ rule TF_gene_network_R:
 # create CGM for GFP, RFP, iPSC
 rule make_CGM:
 	input:
-		hint = 'HINT/{cell_type}.intersect.colors_mpbs.bed',  
 		atac = 'macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak',
 		atac_h3k27ac = 'macs_peak/{cell_type}_common_peaks.h3k27ac_intersect.blackListed.narrowPeak',
 	output:
-		hint_count = 'CGM/{cell_type}.intersect.colors_mpbs.CGM_count.tsv',
-		hint_score = 'CGM/{cell_type}.intersect.colors_mpbs.CGM_score.tsv',
 		atac_score = 'CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM_score.tsv',
 		atac_h3k27ac_score = 'CGM/{cell_type}_common_peaks.h3k27ac_intersect.blackListed.narrowPeak.CGM_score.tsv',
 		atac_count = 'CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM_count.tsv',
@@ -810,8 +811,6 @@ rule make_CGM:
 		"""
 		module load R
 		module load bedtools
-		bash ~/git/CGM/./matrix_maker.sh {config[gtf_file]} {input.hint} {output.hint_count}
-		bash ~/git/CGM/./matrix_maker.sh {config[gtf_file]} {input.hint} {output.hint_score} {params.hint_value_column}
 		bash ~/git/CGM/./matrix_maker.sh {config[gtf_file]} {input.atac} {output.atac_score} {params.atac_value_column}
 		bash ~/git/CGM/./matrix_maker.sh {config[gtf_file]} {input.atac} {output.atac_count}
 		bash ~/git/CGM/./matrix_maker.sh {config[gtf_file]} {input.atac_h3k27ac} {output.atac_h3k27ac_score} {params.atac_value_column}

@@ -14,14 +14,14 @@ common_peaks_file <- args[1] # common_peaks_file <- '/Volumes/data/projects/nei/
 closest_num <- as.numeric(args[2]) #3 closest?
 output_file <- args[3] 
 
-common_peaks_raw <- fread(cmd = paste('gzcat', common_peaks_file))
+common_peaks_raw <- fread(cmd = paste('zcat', common_peaks_file))
 # 1. filter to closest n (args[4]) genes within 500,000bp
 # 2. add gene name and description
 # 3. keep most useful columns
 common_peaks <- common_peaks_raw %>% 
   # part 1
   filter(V22 < 500000) %>% 
-  group_by(V1, V2, V3) %>% 
+  group_by(V1, V2, V3, V4) %>% 
   arrange(V1, V2, V3, V22) %>% 
   top_n(closest_num) %>% 
   # part 2
@@ -29,11 +29,11 @@ common_peaks <- common_peaks_raw %>%
   left_join(grch37_tx2gene) %>% 
   left_join(grch37) %>% 
   # part 3
-  select(chrom = V1, start = V2, end = V3, id = V4, peak_score = V5, strand = V6, thickStart = V7, thickEnd = V8, rgb = V9, distance = V22, symbol, description) %>% 
-  unique() %>% 
-  mutate(id = case_when(rgb == '255,0,0' ~ 'RFP',
+  select(chrom = V1, start = V2, end = V3, motif = V4, peak_score = V5, strand = V6, thickStart = V7, thickEnd = V8, rgb = V9, distance = V22, symbol, description) %>% 
+  mutate(Class = case_when(rgb == '255,0,0' ~ 'RFP',
                         rgb == '0,255,0' ~ 'GFP',
-                        TRUE ~ 'iPSC'))
+                        TRUE ~ 'iPSC')) %>% 
+  unique()
   
 # load in motif bed
 #motif_bed <- fread(motif_bed_file, skip = 1)
