@@ -1,0 +1,457 @@
+---
+title: "Multi-omic Footprint / RNA-Seq iPSC -> RFP -> GFP Analysis"
+author: "David McGaughey"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+params:
+  datafile:
+    value: NA
+  expression:
+    value: NA
+  comparison_1:
+    value: NA
+  comparison_2:
+    value: NA
+
+---
+```{r setup, echo= F}
+knitr::opts_knit$set(root.dir = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/')
+```
+
+# Analysis of TFBS footprint <-> gene sets
+The core idea of this analysis is that the most significant HINT TFBS footprints differentially used between GFP and RFP <-> iPSC and GFP <-> RFP should be our top targets for perturbation with KO/knockdown/etc in iPSC -> RPE. 
+
+What is missing are the likely target(s) of the TFBS, which would give us some idea of the process(es) that the TF is influencing. 
+
+What follows is a long and involved process to get a set of genes associated with each TF footprint.
+
+Brief description of what HINT is doing.
+
+HINT works on the peaks found by MACS2 for each sample (e.g. GFP_IIE) along with the bam file of the aligned reads. It scans each peak for reads that match a Tn5-like cleavage event (https://genomebiology.biomedcentral.com/articles/10.1186/s13059-019-1642-2). Footprints that appear in two or more of the samples are retained (within each set - a footprint seen once in the GFP samples and once in RFP won't be retained). 
+
+The repeating footprint identified is scanned for motifs that match a TF in the HOCOMOCO database. 
+
+This approach should be more specific and sensitive than the previous approach of using the 100bp surrounding the summit of a peak as input to HOMER. 
+
+Furthermore, HINT has a **differential** test which takes each identified footprint / motif set and compares ATAC-seq "open-ness" (number of reads) that have the Tn5 cleavage pattern between two samples. 
+
+This allows us to directly find enriched TFBS footprints between samples. 
+
+Each differentially enriched footprint is then assigned to the two closest gene TSS within 500,000bp. 
+
+In this manner we get TFBS footprint <-> gene links. 
+
+The differential RNA-seq data from iPSC/RFP/GFP is also loaded in to do additional filtering for footprint <-> gene relationships. 
+
+
+# Data Loading
+```{r, echo = T, results = 'hide', warning=F}
+library(tidyverse, warn.conflicts=F, quietly=T)
+
+#peak <- read_tsv(params$datafile, col_names = F)
+
+#setwd('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/')
+HINT_diff_gfp_ipsc <- read_tsv('HINT_GFP_ATAC-Seq__not__IPSC_ATAC-Seq/stats.txt')
+HINT_diff_gfp_rfp <- read_tsv('HINT_GFP_ATAC-Seq__not__RFP_ATAC-Seq/stats.txt')
+HINT_diff_rfp_ipsc <- read_tsv('HINT_RFP_ATAC-Seq__not__IPSC_ATAC-Seq/stats.txt')
+
+peak <- read_tsv('HINT/all_common_footprints.intersect.colors_mpbs.closestTSS.cleaned.bed.gz')
+
+# expression %>% filter(Gene %in% (known_rfp_ipsc %>% filter(`log P-pvalue` < -1000) %>% filter(Name %in% (known_gfp_ipsc %>% filter(`log P-pvalue` < -1000) %>% pull(Name))) %>% pull(Gene))) %>% data.frame() %>% arrange(Gene, Line)
+
+expression_gfp_ipsc <- read_csv('~/git/ipsc_rpe_RNA-seq/data/GFP_vs_iPSC.results.csv')
+expression_gfp_rfp <- read_csv('~/git/ipsc_rpe_RNA-seq/data/GFP_vs_RFP.results.csv')
+expression_rfp_ipsc <- read_csv('~/git/ipsc_rpe_RNA-seq/data/RFP_vs_iPSC.results.csv')
+expression_rpe_ipsc <- read_csv('~/git/ipsc_rpe_RNA-seq/data/RPE_vs_iPSC.results.csv')
+
+expression <- read_tsv('~/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line.tsv')
+```
+
+# Top TFBS that are significantly enriched in both GFP and RFP compared to iPSC
+Enriched with the HINT diff test in GFP/RFP against IPSC (`P_values` column)
+
+**and**
+
+Significantly different gene expression between RPE and iPSC (`padj` column)
+
+If you want, you can ignore everything after this and just pick a few TF off of this list. The list is sorted by p value, so the most enriched motifs (by HINT footprint) are at the top. 
+
+You can also look at the log2FoldChange (RNA-seq) to see how much the TF gene expression difference is. 
+```{r}
+top_footprints_rpe_ipsc <- HINT_diff_gfp_ipsc %>% filter(P_values < 0.05) %>% 
+  filter(Motif %in% (HINT_diff_rfp_ipsc %>% filter(P_values < 0.05) %>% pull(Motif))) %>% 
+  arrange(P_values) %>% 
+  mutate(Gene = gsub('_.*','', Motif)) %>% 
+  mutate(Gene = case_when(Gene == 'PO6F2' ~ 'POU6F2',
+                          Gene == 'ZN333' ~ 'ZNF333',
+                          Gene == 'HXB1' ~ 'HOXB1',
+                          Gene == 'KAISO' ~ 'ZBTB33',
+                          Gene == 'ZN467' ~ 'ZNF467',
+                          Gene == 'HNF6' ~ 'ONECUT1',
+                          Gene == 'NKX32' ~ 'NKX3-2',
+                          Gene == 'HXD13' ~ 'HOXD13',
+                          Gene == 'ZN502' ~ 'ZNF502',
+                          Gene == 'PO3F2' ~ 'POU3F2',
+                          TRUE ~ Gene)) %>% 
+  left_join(expression_rpe_ipsc) %>% 
+  filter(padj < 0.05) %>% dplyr::select(Motif, Gene)
+
+HINT_diff_gfp_ipsc %>% filter(P_values < 0.05) %>% 
+  filter(Motif %in% (HINT_diff_rfp_ipsc %>% filter(P_values < 0.05) %>% pull(Motif))) %>% 
+  arrange(P_values) %>% 
+  mutate(Gene = gsub('_.*','', Motif)) %>% 
+  mutate(Gene = case_when(Gene == 'PO6F2' ~ 'POU6F2',
+                          Gene == 'ZN333' ~ 'ZNF333',
+                          Gene == 'HXB1' ~ 'HOXB1',
+                          Gene == 'KAISO' ~ 'ZBTB33',
+                          Gene == 'ZN467' ~ 'ZNF467',
+                          Gene == 'HNF6' ~ 'ONECUT1',
+                          Gene == 'NKX32' ~ 'NKX3-2',
+                          Gene == 'HXD13' ~ 'HOXD13',
+                          Gene == 'ZN502' ~ 'ZNF502',
+                          Gene == 'PO3F2' ~ 'POU3F2',
+                          TRUE ~ Gene)) %>% 
+  left_join(expression_rpe_ipsc) %>% 
+  filter(padj < 0.05) %>% 
+  dplyr::select(Motif, Gene, Num:padj) %>% 
+  DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+
+```
+
+# Top TFBS that are highly enriched in both GFP compared to RFP
+The idea with GFP being compared to RFP is that you will find TF who need to be used / maintained to get from iPSC -> RFP to GFP (high TYR activity). 
+```{r}
+top_footprints_gfp_rfp <- HINT_diff_gfp_rfp %>% arrange(P_values) %>% 
+  mutate(Gene = gsub('_.*','', Motif)) %>% 
+  mutate(Gene = case_when(Gene == 'PO6F2' ~ 'POU6F2',
+                          Gene == 'ZN333' ~ 'ZNF333',
+                          Gene == 'HXB1' ~ 'HOXB1',
+                          Gene == 'KAISO' ~ 'ZBTB33',
+                          Gene == 'ZN467' ~ 'ZNF467',
+                          Gene == 'HNF6' ~ 'ONECUT1',
+                          Gene == 'NKX32' ~ 'NKX3-2',
+                          Gene == 'HXD13' ~ 'HOXD13',
+                          Gene == 'ZN502' ~ 'ZNF502',
+                          Gene == 'PO3F2' ~ 'POU3F2',
+                          Gene == 'TF7L1' ~ 'TCF7L1',
+                          Gene == 'P5F1B' ~ 'POU5F1B',
+                          Gene == 'PLAL1' ~ 'PLAGL1',
+                          Gene == 'GABP1' ~ 'GABPB1',
+                          Gene == 'ZBT49' ~ 'ZBTB49',
+                          Gene == 'ZBT14' ~ 'ZBTB14',
+                          Gene == 'SMCA1' ~ 'SMARCA1',
+                          Gene == 'HXB3' ~ 'HOXB3',
+                          Gene == 'ZN148' ~ 'ZNF148',
+                          Gene == 'ZN740' ~ 'ZNF740',
+                          Gene == 'ZSC22' ~ 'ZSCAN22',
+                          Gene == 'EVI1' ~ 'MECOM',
+                          Gene == 'TYY2' ~ 'YY2',
+                          Gene == 'HMBX1' ~ 'HMBOX1',
+                          Gene == 'RX' ~ 'RAX',
+                          Gene == 'BHE22' ~ 'BHLHE22',
+                          Gene == 'HTF4' ~ 'TCF12',
+                          Gene == 'ZN649' ~ 'ZNF649',
+                          TRUE ~ Gene)) %>% 
+  filter(P_values < 0.051) %>% 
+  left_join(expression_gfp_rfp) %>% 
+  filter(padj < 0.05) %>% 
+  dplyr::select(Motif, Gene)
+HINT_diff_gfp_rfp %>% arrange(P_values) %>% 
+  mutate(Gene = gsub('_.*','', Motif)) %>% 
+  mutate(Gene = case_when(Gene == 'PO6F2' ~ 'POU6F2',
+                          Gene == 'ZN333' ~ 'ZNF333',
+                          Gene == 'HXB1' ~ 'HOXB1',
+                          Gene == 'KAISO' ~ 'ZBTB33',
+                          Gene == 'ZN467' ~ 'ZNF467',
+                          Gene == 'HNF6' ~ 'ONECUT1',
+                          Gene == 'NKX32' ~ 'NKX3-2',
+                          Gene == 'HXD13' ~ 'HOXD13',
+                          Gene == 'ZN502' ~ 'ZNF502',
+                          Gene == 'PO3F2' ~ 'POU3F2',
+                          Gene == 'TF7L1' ~ 'TCF7L1',
+                          Gene == 'P5F1B' ~ 'POU5F1B',
+                          Gene == 'PLAL1' ~ 'PLAGL1',
+                          Gene == 'GABP1' ~ 'GABPB1',
+                          Gene == 'ZBT49' ~ 'ZBTB49',
+                          Gene == 'ZBT14' ~ 'ZBTB14',
+                          Gene == 'SMCA1' ~ 'SMARCA1',
+                          Gene == 'HXB3' ~ 'HOXB3',
+                          Gene == 'ZN148' ~ 'ZNF148',
+                          Gene == 'ZN740' ~ 'ZNF740',
+                          Gene == 'ZSC22' ~ 'ZSCAN22',
+                          Gene == 'EVI1' ~ 'MECOM',
+                          Gene == 'TYY2' ~ 'YY2',
+                          Gene == 'HMBX1' ~ 'HMBOX1',
+                          Gene == 'RX' ~ 'RAX',
+                          Gene == 'BHE22' ~ 'BHLHE22',
+                          Gene == 'HTF4' ~ 'TCF12',
+                          Gene == 'ZN649' ~ 'ZNF649',
+                          TRUE ~ Gene)) %>% 
+  filter(P_values < 0.051) %>% 
+  left_join(expression_gfp_rfp) %>% 
+  filter(padj < 0.05) %>% 
+  dplyr::select(Motif, Gene, Num:padj) %>% 
+  DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+```
+
+# Footprint Differential Plots
+## GFP vs iPSC
+```{r, out.width="0.3\\linewidth"}
+
+library(magick)
+ for (i in top_footprints_rpe_ipsc$Motif){
+  img <- image_read_pdf(paste0("/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/HINT_GFP_ATAC-Seq__not__IPSC_ATAC-Seq/Lineplots/", i, ".pdf"))
+  image_write(image_convert(img, 'png'), path = paste0('/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/HINT_GFP_ATAC-Seq__not__IPSC_ATAC-Seq/Lineplots/',i, '.png' ))
+ }
+
+for (i in top_footprints_rpe_ipsc$Motif){
+  knitr::include_graphics(paste0("/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/HINT_GFP_ATAC-Seq__not__IPSC_ATAC-Seq/Lineplots/", i, ".png")) %>% print()
+}
+```
+
+## GFP vs RFP
+```{r, out.width="0.3\\linewidth"}
+for (i in top_footprints_gfp_rfp$Motif){
+  img <- image_read_pdf(paste0("/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/HINT_GFP_ATAC-Seq__not__RFP_ATAC-Seq/Lineplots/", i, ".pdf"))
+  image_write(image_convert(img, 'png'), path = paste0('/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/HINT_GFP_ATAC-Seq__not__RFP_ATAC-Seq/Lineplots/',i, '.png' ))
+}
+
+for (i in top_footprints_gfp_rfp$Motif){
+  knitr::include_graphics(paste0("/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/HINT_GFP_ATAC-Seq__not__RFP_ATAC-Seq/Lineplots/", i, ".png")) %>% print()
+}
+```
+# Match footprints to genes
+
+Three metrics are used to assign footprints to genes:
+1. Distance (base pairs (bp)) from footprint to TSS. Distance is up or down-stream of TSS
+- 100,000 bp or
+- 500,000 bp
+2. Differential expression of gene in condition (q < 0.01)
+3. Finally after assigning footprints to gene, the pair is only retained if 
+there is a difference in the number of footprints between conditions (RFP vs iPSC
+or GFP vs RFP)
+```{r}
+
+
+# create gene centric info on peak/motif and differential gene expression iPSC <-> RPE
+grouper <- function(peak, motifs, dist, comp){
+  grouped_stats <- list()
+  if (comp == 'RPE_IPSC'){
+    for (i in motifs){
+      out <- peak %>% 
+        #filter(peak_score > 75) %>% 
+        filter(distance < dist) %>% 
+        filter(!is.na(symbol)) %>% # remove NA genes where the peak didn't get a match (no genes within 500kb of a peak)
+        filter(motif == i) %>% # only retain the motif TFBS homer hits
+        group_by(motif, symbol, Class) %>% # group by GFP/RFP,iPSC, the macs2 peak, and the gene
+        summarise(`Footprint Count`=n()) %>%  # count total number of motifs
+        mutate(Class = case_when(Class != 'iPSC' ~ 'RPE',
+                                 TRUE ~ Class)) %>% 
+        group_by(Class, symbol, motif) %>% summarise(`Footprint Count` = mean(`Footprint Count`)) %>% 
+        spread(Class, `Footprint Count`) 
+      out[is.na(out)] <- 0
+      out <- out %>%  
+        mutate(`RPE - iPSC Delta` = RPE - iPSC) %>% 
+        arrange(`RPE - iPSC Delta`) %>% 
+        dplyr::rename(Gene = symbol) %>% 
+        left_join(expression_rpe_ipsc, by = 'Gene') %>% 
+        filter(padj < 0.01, abs(log2FoldChange) > 1)
+      grouped_stats[[i]] <- out
+    }
+  }
+  else {
+    for (i in motifs){
+      out <- peak %>% 
+        filter(Class != 'iPSC') %>% 
+        filter(distance < dist) %>% 
+        filter(!is.na(symbol)) %>% # remove NA genes where the peak didn't get a match (no genes within 500kb of a peak)
+        filter(motif == i) %>% # only retain the motif TFBS homer hits
+        group_by(motif, symbol, Class) %>% # group by GFP/RFP,iPSC, the macs2 peak, and the gene
+        summarise(`Footprint Count`=n()) %>%  # count total number of motifs
+        group_by(Class, symbol, motif) %>% summarise(`Footprint Count` = mean(`Footprint Count`)) %>% 
+        spread(Class, `Footprint Count`) 
+      out[is.na(out)] <- 0
+      out <- out %>%  
+        mutate(`GFP - RFP Delta` = GFP - RFP) %>% 
+        arrange(`GFP - RFP Delta`) %>% 
+        dplyr::rename(Gene = symbol) %>% 
+        left_join(expression_gfp_rfp, by = 'Gene') %>% 
+        filter(padj < 0.01)
+      grouped_stats[[i]] <- out
+    }
+    #print(i)
+  }
+  grouped_stats
+}
+
+rpe_ipsc_200K <- grouper(peak, top_footprints_rpe_ipsc$Motif, 100000, comp = 'RPE_IPSC') %>% bind_rows()
+gfp_rfp_200K <- grouper(peak, top_footprints_gfp_rfp$Motif, 100000, comp = 'GFP_RFP') %>% bind_rows()
+
+rpe_ipsc_1M <- grouper(peak, top_footprints_rpe_ipsc$Motif, 500000, comp = 'RPE_IPSC') %>% bind_rows()
+gfp_rfp_1M <- grouper(peak, top_footprints_gfp_rfp$Motif, 500000, comp = 'GFP_RFP') %>% bind_rows()
+```
+
+# HINT Enriched Footprint
+## RPE vs iPSC 100K up and down
+
+Refer to the [table above](#top-tfbs-that-are-significantly-enriched) in both GFP and RFP compared to iPSC` 
+for motif/footprint info
+
+```{r}
+rpe_ipsc_200K %>% DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+```
+
+## RPE vs iPSC 500K up and down
+```{r}
+rpe_ipsc_1M %>% DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+```
+
+
+## GFP vs RFP 100K up and down
+```{r}
+gfp_rfp_200K %>% DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+```
+
+## GFP vs RFP 500K up and down
+```{r}
+gfp_rfp_1M %>% DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+```
+
+# GO Term enrichment for each footprint
+```{r}
+library(org.Hs.eg.db)
+library(clusterProfiler)
+
+go_doer <- function(data = gfp_rfp_200K){
+  out <- list()
+  for (i in unique(data$motif)){
+    print(i)
+    out[[i]] <- enrichGO(gene    = data %>% filter(motif == i) %>% pull(Gene),
+                         keyType       = 'SYMBOL',
+                         OrgDb         = org.Hs.eg.db,
+                         ont           = "BP",
+                         pAdjustMethod = "BH",
+                         pvalueCutoff  = 0.01,
+                         qvalueCutoff  = 0.1)
+  }
+  out
+}
+
+gfp_rfp_GO_200K <- go_doer(gfp_rfp_200K)
+gfp_rfp_GO_1M <- go_doer(gfp_rfp_1M)
+rpe_ipsc_GO_200K <- go_doer(rpe_ipsc_200K)
+rpe_ipsc_GO_1M <- go_doer(rpe_ipsc_1M)
+
+# save(gfp_rfp_GO_200K, 
+#      gfp_rfp_GO_1M,
+#      rpe_ipsc_GO_200K,
+#      rpe_ipsc_GO_1M,
+#      file = 'ipsc_rpe_atac_GO.Rdata')
+
+#load('~/git/ipsc_rpe_atac/src/ipsc_rpe_atac_GO.Rdata')
+```
+
+## RPE vs iPSC, 200K windows
+```{r}
+bind_rows(lapply(rpe_ipsc_GO_200K, function(x) x %>% summary()), .id = 'Motifs') %>% DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+```
+
+## RPE vs iPSC, 1M window
+```{r}
+bind_rows(lapply(rpe_ipsc_GO_1M, function(x) x %>% summary()), .id = 'Motifs') %>% DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+```
+
+## GFP vs RFP, 200K window
+```{r}
+bind_rows(lapply(gfp_rfp_GO_200K, function(x) x %>% summary()), .id = 'Motifs') %>% DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+```
+
+## GFP vs RFP, 1M window
+```{r}
+bind_rows(lapply(gfp_rfp_GO_1M, function(x) x %>% summary()), .id = 'Motifs') %>% DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+```
+
+# Some stats
+## Count number of genes associated with each footprint
+### RPE vs iPSC 200K
+```{r}
+rpe_ipsc_200K %>% group_by(motif) %>% summarise(count = n(), Gene = paste(Gene, collapse = ',') ) %>% arrange(-count) %>% DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+```
+
+### RPE vs iPSC 1M
+```{r}
+rpe_ipsc_1M %>% group_by(motif) %>% summarise(count = n(), Gene = paste(Gene, collapse = ',') ) %>% arrange(-count) %>% DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+```
+
+### GFP vs RFP 200K
+```{r}
+gfp_rfp_200K %>% group_by(motif) %>% summarise(count = n(), Gene = paste(Gene, collapse = ',') ) %>% arrange(-count) %>% DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+```
+
+### GFP vs RFP 1M
+```{r}
+gfp_rfp_1M %>% group_by(motif) %>% summarise(count = n(), Gene = paste(Gene, collapse = ',') ) %>% arrange(-count) %>% DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+```
+
+# Genes associated with multiple TF/footprints
+
+These are also potentially interesting genes (especially ones which are TF) as
+they are globally related to multiple. Stretching, but these are possible 
+master regulators?
+
+## RPE vs iPSC 200K
+```{r}
+rpe_ipsc_200K %>% group_by(Gene) %>% 
+  summarise(count = n(), motifs = paste(motif, collapse=',')) %>% 
+  arrange(-count) %>%  
+  left_join(expression %>% dplyr::select(Gene, TF)) %>% 
+  dplyr::select(Gene, count, TF, motifs) %>% 
+  left_join(expression_rpe_ipsc %>% dplyr::select(Gene, log2FoldChange, padj)) %>% 
+  dplyr::select(Gene:TF, log2FoldChange, padj, motifs) %>% 
+  unique() %>% 
+  DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+```
+
+## RPE vs iPSC 1M
+```{r}
+rpe_ipsc_1M %>% group_by(Gene) %>% 
+  summarise(count = n(), motifs = paste(motif, collapse=',')) %>% 
+  arrange(-count) %>%  
+  left_join(expression %>% dplyr::select(Gene, TF)) %>% 
+  dplyr::select(Gene, count, TF, motifs) %>% 
+  left_join(expression_rpe_ipsc %>% dplyr::select(Gene, log2FoldChange, padj)) %>% 
+  dplyr::select(Gene:TF, log2FoldChange, padj, motifs) %>% 
+  unique() %>% 
+  DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+```
+
+
+## GFP vs RFP 200K
+```{r}
+gfp_rfp_200K %>% group_by(Gene) %>% 
+  summarise(count = n(), motifs = paste(motif, collapse=',')) %>% 
+  arrange(-count) %>%  
+  left_join(expression %>% dplyr::select(Gene, TF)) %>% 
+  dplyr::select(Gene, count, TF, motifs) %>% 
+  left_join(expression_gfp_rfp %>% dplyr::select(Gene, log2FoldChange, padj)) %>% 
+  dplyr::select(Gene:TF, log2FoldChange, padj, motifs) %>% 
+  unique() %>% 
+  DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+```
+## GFP vs RFP 1M
+```{r}
+gfp_rfp_1M %>% group_by(Gene) %>% 
+  summarise(count = n(), motifs = paste(motif, collapse=',')) %>% 
+  arrange(-count) %>%  
+  left_join(expression %>% dplyr::select(Gene, TF)) %>% 
+  dplyr::select(Gene, count, TF, motifs) %>% 
+  left_join(expression_gfp_rfp %>% dplyr::select(Gene, log2FoldChange, padj)) %>% 
+  dplyr::select(Gene:TF, log2FoldChange, padj, motifs) %>% 
+  unique() %>% 
+  DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+```
+
