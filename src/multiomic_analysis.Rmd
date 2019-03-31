@@ -18,7 +18,7 @@ params:
     value: NA
 
 ---
-```{r setup, echo= F}
+```{r setup}
 knitr::opts_knit$set(root.dir = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/')
 ```
 
@@ -82,6 +82,7 @@ If you want, you can ignore everything after this and just pick a few TF off of 
 
 You can also look at the log2FoldChange (RNA-seq) to see how much the TF gene expression difference is. 
 ```{r}
+
 top_footprints_rpe_ipsc <- HINT_diff_gfp_ipsc %>% filter(P_values < 0.05) %>% 
   filter(Motif %in% (HINT_diff_rfp_ipsc %>% filter(P_values < 0.05) %>% pull(Motif))) %>% 
   arrange(P_values) %>% 
@@ -196,6 +197,8 @@ HINT_diff_gfp_rfp %>% arrange(P_values) %>%
   filter(padj < 0.05) %>% 
   dplyr::select(Motif, Gene, Num:padj) %>% 
   DT::datatable(extensions = 'Buttons', options = list(     dom = 'Bfrtip',     buttons = c('copy', 'csv', 'excel')))
+
+
 ```
 
 # Footprint Differential Plots
