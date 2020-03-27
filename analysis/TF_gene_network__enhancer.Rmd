@@ -8,10 +8,9 @@ output:
     toc: true
 ---
 
-Enhancer only peaks (well, removing peaks in the TSS)
-```{r}
+```{r, echo=F,  results = 'hide'}
 library(tidyverse)
-peak <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/peak_full/homer_enhancers/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz', col_names = F)
+peak <- read_tsv('/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/peak_full/homer_GFP__not__IPSC/promoters/all_common_peaks.blackListed.narrowPeak.closestTSS__interesting_homer_motif.bed.gz', col_names = F)
 expression <- read_csv('~/git/ipsc_rpe_RNA-seq/data/lsTPM_by_Line_with_Diff_Exp.tsv')
 
 colnames(peak) <- c('chrom','start','stop','type','macs2_score','strand','thickStart','thickStop','RGB','Distance_to_Gene','Gene','Description','chrom_motif','start_motif','stop_motif','motif','motif_score','strand_motif')
@@ -58,7 +57,7 @@ for (i in motifs){
   TF_gene_stats_list[[i]] <- out
   print(i)
 }
-1
+
 TF_gene_stats <- bind_rows(TF_gene_stats_list, .id = 'motif') %>% rowwise() %>% mutate(motif_core = toupper(gsub('\\(.*|.*BestGuess:','',motif))) %>% ungroup()
 ```
 
