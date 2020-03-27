@@ -1,0 +1,28 @@
+---
+title: ATACseqQC
+author: David McGaughey
+date: '`r format(Sys.Date(), "%Y-%m-%d")`'
+output: 
+  html_notebook:
+    theme: flatly
+    toc: true
+    code_folding: hide
+---
+```{r, message=F, warning=F, include=F}
+# Load Libraries without printing any warnings or messages
+library(tidyverse)
+library(preseqR)
+library(ATACseqQC)
+```
+
+```{r}
+bamfile <- '/Volumes/data/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/merged_bam_HQ/GFP_IIE_5.q5.rmdup.bam'
+bamfile.labels <- gsub(".bam", "", basename(bamfile))
+lib_comp <- estimateLibComplexity(readsDupFreq(bamfile))
+
+frag_size <- fragSizeDist(bamfile, bamfile.labels)
+```
+# Session Info
+```{r}
+devtools::session_info()
+```
