@@ -286,6 +286,20 @@ sample_closestTSS %>%
 
 ```
 
+# SOX10
+```{r}
+tf_motif %>% filter(TF=='SOX10') %>% 
+```
+
+# PAX6
+```{r}
+
+```
+
+# MITF
+```{r}
+
+```
 
 ```{r}
 # library(tidygraph)
