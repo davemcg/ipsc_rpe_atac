@@ -24,3 +24,4 @@ R_version: 'R/3.5.0'
 msCentipede_version: 'mscentipede/1.0'
 peak_comparison_pair: ['GFP_ATAC-Seq__not__IPSC_ATAC-Seq','GFP_ATAC-Seq__not__RFP_ATAC-Seq', 'RFP_ATAC-Seq__not__IPSC_ATAC-Seq']
 homer_version: 'homer/4.10.1'
+chunks: ['xaa','xab','xac','xad','xae','xaf','xag','xah','xai','xaj','xak','xal','xam','xan','xao','xap','xaq','xar','xas','xat','xau','xav','xaw','xax','xay','xaz','xba','xbb','xbc','xbd','xbe','xbf','xbg','xbh','xbi','xbj','xbk','xbl','xbm','xbn','xbo','xbp','xbq','xbr','xbs','xbt','xbu','xbv','xbw','xbx','xby','xbz','xca','xcb','xcc','xcd','xce','xcf','xcg','xch','xci','xcj','xck','xcl','xcm','xcn','xco','xcp','xcq','xcr','xcs','xct','xcu','xcv','xcw','xcx','xcy','xcz','xda','xdb','xdc','xdd','xde','xdf','xdg','xdh','xdi','xdj','xdk','xdl','xdm','xdn','xdo','xdp','xdq','xdr','xds','xdt','xdu','xdv','xdw','xdx','xdy','xdz','xea','xeb','xec','xed','xee']
