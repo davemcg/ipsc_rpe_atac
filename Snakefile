@@ -90,31 +90,8 @@ wildcard_constraints:
 
 rule all:
 	input:
-		'network_reports/analysis.html',
-		expand('punctate/punctate_analysis_{num}.txt', num = 1 ),
-		expand('HINT_{comparison}/stats.txt', comparison = config['peak_comparison_pair']),
+		'multiomic_analysis/report.html',
 		'/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_HINT_footprints.bb',
-	#	expand('merged_bam_HQ/{cell_type}.q5.rmdup.bam', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
-	##	expand('macs_peak/{comparison}_common_peaks.blackListed.narrowPeak', comparison = config['peak_comparison_pair']),
-	##	expand('homer/{cell_type}_{num}_homer_TFBS_run/knownResults_{num}.html', cell_type = ['GFP_ATAC-Seq'], num = [1,2,3,4,5,6,7,8]),
-	#	expand('macs_peak/{cell_type}_common_peaks.blackListed.closestTSS.narrowPeak', cell_type = ['GFP_ATAC-Seq']),
-	#	expand('computeMatrix/{cell_type}.matrix.gz', cell_type = ['IPSC_ChIP_h3k27ac','GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
-	#	expand('CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM_score.tsv', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq']),
-	#	expand('macs_peak/{cell_type}_common_peaks.h3k27ac_intersect.blackListed.narrowPeak', cell_type = ['GFP_ATAC-Seq', 'RFP_ATAC-Seq', 'IPSC_ATAC-Seq'])
-	#	expand('fastq/{SRA_runs}_pass.fastq.gz', SRA_runs = [x for x in list(itertools.chain.from_iterable(SAMPLE_RUN.values()))]),
-		#expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}.bw', sample = list(SAMPLE_PATH.keys())),
-	##	expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}_peaks.blackListed.hg19.narrowPeak.bb', sample = list(SAMPLE_PATH.keys())),
-		#'deeptools/multiBamSummary.npz',
-		#'deeptools/multiBamSummary.tsv',
-		#'metrics/reads_by_sample.txt',
-	#	'fastqc/multiqc/multiqc_report.html',
-	#	expand('downsample_bam/{sample}.q5.rmdup.ds.bam', sample = list(SAMPLE_PATH.keys())),
-		#expand('msCentipede/closest_TSS/{cell_type}.{motif}.closestTSS.dat.gz', cell_type = list(TYPE_SAMPLE.keys()), motif = config['motif_IDs']),
-		#expand('/data/mcgaugheyd/datashare/hufnagel/hg19/{motif}.union.HQ.pretty.bb', motif = config['motif_IDs']),
-		#'/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_peaks.blackListed.narrowPeak.bb',
-		#'/data/mcgaugheyd/datashare/hufnagel/hg19/interesting_homer_motif.bb',
-	##	expand('network_reports/{comparison}_{peak_type}/{comparison}_{peak_type}_networkAnalysis.html', comparison = config['peak_comparison_pair'], peak_type = ['all','enhancers','promoters']),
-	#	expand('CGM/{cell_type}_common_peaks.blackListed.narrowPeak.CGM.tsv', cell_type = list(TYPE_SAMPLE.keys()))
 
 rule pull_lane_fastq_from_nisc_or_sra:
 	output:
@@ -221,7 +198,7 @@ rule filter_bam:
 		bam = 'merged_bam_HQ/{sample}.q5.rmdup.bam',
 		bai = 'merged_bam_HQ/{sample}.q5.rmdup.bam.bai'
 	threads: 5
-	shell:
+	
 		"""
 		module load {config[samtools_version]}
 		module load {config[picard_version]}
@@ -651,7 +628,7 @@ localrules: merge_HINT_diff_results
 rule merge_HINT_diff_results:
 	input:
 		expand('HINT_{{comparison}}/{chunk}/',
-			chunk = ['xaa','xab','xac','xad','xae','xaf','xag','xah','xai','xaj','xak','xal','xam','xan','xao','xap','xaq','xar','xas','xat','xau','xav','xaw','xax','xay','xaz','xba','xbb','xbc','xbd','xbe','xbf','xbg','xbh','xbi','xbj','xbk','xbl','xbm','xbn','xbo','xbp','xbq','xbr','xbs','xbt','xbu','xbv','xbw','xbx','xby','xbz','xca','xcb','xcc','xcd','xce','xcf','xcg','xch','xci','xcj','xck','xcl','xcm','xcn','xco','xcp','xcq','xcr','xcs','xct','xcu','xcv','xcw','xcx','xcy','xcz','xda','xdb','xdc','xdd','xde','xdf','xdg','xdh','xdi','xdj','xdk','xdl','xdm','xdn','xdo','xdp','xdq','xdr','xds','xdt','xdu','xdv','xdw','xdx','xdy','xdz','xea','xeb','xec','xed','xee'])
+			chunk = config['chunks']),
 	output:
 		all = 'HINT_{comparison}/stats.txt',
 		sig = 'HINT_{comparison}/sig_TF.txt'
@@ -706,7 +683,6 @@ rule HINT_interesting_footprints:
 		grep -hFf {output.sig} {input} | grep "^chr"  > {output.bed}
 		"""
 		
-	
 # finds 10 closest (-k 10)
 # also reports distance
 rule find_closest_TSS_to_all_common:
@@ -771,28 +747,20 @@ rule clean_all_common_peaks:
 		"""
 
 # create network analysis R report
-rule TF_gene_network_R:
+localrules: multiomic_report_R
+rule multiomic_report_R:
 	input:
 		full = 'HINT/all_common_footprints.intersect.colors_mpbs.closestTSS.cleaned.bed.gz'
 	output:
-		file = 'network_reports/analysis.html'
-	run:
-		if wildcards.comparison == 'GFP_ATAC-Seq__not__IPSC_ATAC-Seq':
-			shell("module load {config[R_version]}; \
-				cp ~/git/ipsc_rpe_atac/src/network_analysis.Rmd {params.folder}/network_analysis.Rmd; \
-				cp {params.gfp_vs_ipsc} {params.folder}/; \
-				Rscript -e \"rmarkdown::render('{params.folder}/network_analysis.Rmd', output_file = '{params.file}', output_dir = '{params.folder}', params = list(comparison_1 = 'GFP', comparison_2 = 'iPSC', expression = '{params.gfp_vs_ipsc_file}', datafile = '../../{input}'))\" ")
-		elif wildcards.comparison == 'GFP_ATAC-Seq__not__RFP_ATAC-Seq':
-			shell("module load {config[R_version]}; \
-				cp ~/git/ipsc_rpe_atac/src/network_analysis.Rmd {params.folder}/network_analysis.Rmd; \
-				cp {params.gfp_vs_rfp} {params.folder}/; \
-				Rscript -e \"rmarkdown::render('{params.folder}/network_analysis.Rmd', output_file = '{params.file}', output_dir = '{params.folder}', params = list(comparison_1 = 'GFP', comparison_2 = 'RFP', expression = '{params.gfp_vs_rfp_file}', datafile = '../../{input}'))\" ")
-		elif wildcards.comparison == 'RFP_ATAC-Seq__not__GFP_ATAC-Seq':
-			shell("module load {config[R_version]}; \
-				cp ~/git/ipsc_rpe_atac/src/network_analysis.Rmd {params.folder}/network_analysis.Rmd; \
-				cp {params.gfp_vs_rfp} {params.folder}/; \
-				Rscript -e \"rmarkdown::render('{params.folder}/network_analysis.Rmd', output_file = '{params.file}', output_dir = '{params.folder}', params = list(comparison_1 = 'RFP', comparison_2 = 'GFP', expression = '{params.gfp_vs_rfp_file}', datafile = '../../{input}'))\" ")
-
+		file = 'multiomic_analysis/report.html'
+	shell:
+		"""
+		module load {config[R_version]}
+		module load {config[pandoc_version]}
+		mkdir -p multiomic_analysis
+		cp ~/git/ipsc_rpe_atac/src/multiomic_analysis.Rmd multiomic_analysis/network_analysis.Rmd 
+		Rscript -e \"rmarkdown::render('multiomic_analysis/network_analysis.Rmd', output_file = 'report.html')\" 
+		"""
 
 # create CGM for GFP, RFP, iPSC
 rule make_CGM:
