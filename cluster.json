@@ -41,6 +41,11 @@
 		"partition" : "norm",
 		"time" : "12:00:00"
 	},
+	"bam_to_bigWig" :
+	{
+		"mem" : "16G",
+		"extra" : " --gres=lscratch:8"
+	},
 	"process_closest_TSS_data" :
 	{
 		"partition" : "norm",
@@ -72,6 +77,10 @@
 		"time" : "12:00:00",
 		"mem" : "32G"
 	},
+	"peak_calling" :
+	{
+		"extra" : " --gres=lscratch:8"
+	},	
 	"computeMatrix" :
 	{
 		"partition" : "norm",
@@ -93,5 +102,9 @@
 		"partition" : "norm",
 		"mem" : "8G",
 		"time" : "8:00:00"
+	},
+	"clean_all_common_peaks" :
+	{
+		"extra" : " --gres=lscratch:15"
 	}
 }
