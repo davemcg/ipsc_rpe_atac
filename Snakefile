@@ -86,12 +86,19 @@ wildcard_constraints:
 	sample = '|'.join(list(SAMPLE_PATH.keys())),
 	cell_type = '|'.join(list(TYPE_SAMPLE.keys())),
 	lane_fastq = '|'.join([x.split('/')[-1].split('.bam')[0] for x in list(itertools.chain.from_iterable(SAMPLE_PATH.values()))]),
-	comparison = '|'.join(config['peak_comparison_pair'])
+	comparison = '|'.join(config['peak_comparison_pair']),
+	chunk = '|'.join(config['chunks'])
+
+print(SAMPLE_PATH.keys())
 
 rule all:
 	input:
+		#expand('macs_peak/{comparison}_common_peaks.blackListed.narrowPeak', comparison = config['peak_comparison_pair']),
+		'HINT/all_common_footprints.intersect.colors_mpbs.sig_footprints.bed',
+		expand('/data/mcgaugheyd/datashare/hufnagel/hg38/{sample}.bw', sample = list(SAMPLE_PATH.keys())),
+		'/data/mcgaugheyd/datashare/hufnagel/hg38/all_common_peaks.blackListed.narrowPeak.bb',
 		'multiomic_analysis/report.html',
-		'/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_HINT_footprints.bb',
+		'/data/mcgaugheyd/datashare/hufnagel/hg38/all_common_HINT_footprints.bb',
 
 rule pull_lane_fastq_from_nisc_or_sra:
 	output:
@@ -119,14 +126,14 @@ rule pull_lane_fastq_from_nisc_or_sra:
 				shell(echo_command)
 				shell(command)
 
-localrules: build_hg19	
-# define build custom hg19
+localrules: build_GRCh38	
+# define build custom GRCh38
 # the TYR enhancer is a MOUSE enhancer
-rule build_hg19:
+rule build_GRCh38:
 	input:
 		fa = config['bwa_genome']
 	output:
-		'/data/mcgaugheyd/genomes/hg19/hg19_bharti_TYR_enhancer.fa'
+		'/data/mcgaugheyd/genomes/GRCh38/GRCh38.primary_assembly.genome.bharti_TYR_enhancer.fa'
 	shell:
 		"""
 		module load {config[samtools_version]}
@@ -137,9 +144,9 @@ rule build_hg19:
 # build the custom bwa index
 rule build_bwa_index:
 	input:
-		'/data/mcgaugheyd/genomes/hg19/hg19_bharti_TYR_enhancer.fa'
+		'/data/mcgaugheyd/genomes/GRCh38/GRCh38.primary_assembly.genome.bharti_TYR_enhancer.fa'
 	output:
-		'/data/mcgaugheyd/genomes/hg19/hg19_bharti_TYR_enhancer.fa.bwt'
+		'/data/mcgaugheyd/genomes/GRCh38/GRCh38.primary_assembly.genome.bharti_TYR_enhancer.fa.bwt'
 	shell:
 		"""
 		module load {config[bwa_version]}
@@ -150,18 +157,18 @@ rule build_bwa_index:
 rule align:
 	input:
 		fa = fastq_pair_maker,
-		bwa_genome = '/data/mcgaugheyd/genomes/hg19/hg19_bharti_TYR_enhancer.fa',
-		bwa_index = '/data/mcgaugheyd/genomes/hg19/hg19_bharti_TYR_enhancer.fa.bwt'
+		bwa_genome = '/data/mcgaugheyd/genomes/GRCh38/GRCh38.primary_assembly.genome.bharti_TYR_enhancer.fa',
+		bwa_index = '/data/mcgaugheyd/genomes/GRCh38/GRCh38.primary_assembly.genome.bharti_TYR_enhancer.fa.bwt'
 	output:
 		temp('realigned/{lane_sample}.bam')
 	threads: 12 
 	run:
 		if 'SRR' not in input[0]:
-			shell('module load {config[bwa_version]}; \
+			shell('module load samtools; module load {config[bwa_version]}; \
 						bwa mem -t {threads} -B 4 -O 6 -E 1 -M {input.bwa_genome} {input.fa} | \
 						samtools view -1 - >  {output}')
 		else:
-			shell('module load {config[bwa_version]}; \
+			shell('module load samtools; module load {config[bwa_version]}; \
 						bwa mem -t {threads} -B 4 -O 6 -E 1 -M {input.bwa_genome} fastq/{wildcards.lane_sample} | \
 						samtools view -1 - >  {output}')
 		
@@ -198,7 +205,7 @@ rule filter_bam:
 		bam = 'merged_bam_HQ/{sample}.q5.rmdup.bam',
 		bai = 'merged_bam_HQ/{sample}.q5.rmdup.bam.bai'
 	threads: 5
-	
+	shell:
 		"""
 		module load {config[samtools_version]}
 		module load {config[picard_version]}
@@ -227,7 +234,6 @@ rule cell_type_bam:
 		samtools index {output}
 		"""	
 
-# downsample to 50e6 reads
 rule downsample:
 	input:
 		bam = 'merged_bam_HQ/{sample}.q5.rmdup.bam',
@@ -270,8 +276,8 @@ rule bam_to_bigWig:
 			--ignoreForNormalization MT mm10_TYR_enhancer_chr7_87538324_87543016 \
 			--outFileFormat bedgraph
 		
-		sort -k1,1 -k2,2n {output.bedgraph} > {output.bedgraph}TEMP 
-		bedGraphToBigWig {output.bedgraph}TEMP /data/mcgaugheyd/genomes/hg19/hg19.chrom.sizes {output.bw}
+		LC_COLLATE=C sort -k1,1 -k2,2n {output.bedgraph} > {output.bedgraph}TEMP 
+		bedGraphToBigWig {output.bedgraph}TEMP {config[bwa_genome_sizes]} {output.bw}
 		rm {output.bedgraph}TEMP
 		"""
 
@@ -362,17 +368,17 @@ rule peak_calling_comparator:
 # https://sites.google.com/site/anshulkundaje/projects/blacklists
 rule retrieve_and_process_black_list:
 	output:
-		'/data/mcgaugheyd/genomes/hg19/ENCFF001TDO.bed.gz'
+		'/data/mcgaugheyd/genomes/GRCh38/ENCFF356LFX.bed.gz'
 	shell:
 		"""
-		wget https://www.encodeproject.org/files/ENCFF001TDO/@@download/ENCFF001TDO.bed.gz
-		mv ENCFF001TDO.bed.gz /data/mcgaugheyd/genomes/hg19/
+		wget https://www.encodeproject.org/files/ENCFF356LFX/@@download/ENCFF356LFX.bed.gz
+		mv ENCFF001TDO.bed.gz /data/mcgaugheyd/genomes/GRCh38/
 		"""
 
 rule black_list:
 	input:
 		peaks = 'macs_peak/{sample}_peaks.narrowPeak',
-		blacklist = '/data/mcgaugheyd/genomes/hg19/ENCFF001TDO.bed.gz'
+		blacklist = '/data/mcgaugheyd/genomes/GRCh38/ENCFF356LFX.bed.gz'
 	output:
 		'macs_peak/{sample}_peaks.blackListed.narrowPeak'
 	shell:
@@ -392,9 +398,9 @@ rule build_tss_regions:
 		config['gtf_file']	
 	output:
 		gene = temp('annotation/gene.bed'),
-		tss = temp('annotation/tss_hg19fix1.bed'),
-		tssT2 = temp('annotation/tss_hg19fix2.bed'),
-		tssG = 'annotation/tss_hg19.bed'
+		tss = temp('annotation/tss_GRCh38fix1.bed'),
+		tssT2 = temp('annotation/tss_GRCh38fix2.bed'),
+		tssG = 'annotation/tss_GRCh38.bed'
 	shell:
 		"""
 		module load ucsc
@@ -419,7 +425,7 @@ rule union_peaks_by_type:
 		'macs_peak/{cell_type}_peaks.blackListed.narrowPeak'
 	shell:
 		"""
-		cat {input} | sort -k1,1 -k2,2n > {output}
+		cat {input} | LC_COLLATE=C sort -k1,1 -k2,2n > {output}
 		"""
 
 rule union_summits_by_type:
@@ -429,7 +435,7 @@ rule union_summits_by_type:
 		'macs_peak/{cell_type}_summits.bed'
 	shell:
 		"""
-		cat {input} | sort -k1,1 -k2,2n > {output}
+		cat {input} | LC_COLLATE=C sort -k1,1 -k2,2n > {output}
 		"""
 
 # merge overlapping peaks together
@@ -478,7 +484,7 @@ rule common_peaks_by_type:
 # remove if peak in blacklist
 rule HINT:
 	input:
-		blacklist = '/data/mcgaugheyd/genomes/hg19/ENCFF001TDO.bed.gz',
+		blacklist = '/data/mcgaugheyd/genomes/GRCh38/ENCFF356LFX.bed.gz',
 		peaks = 'macs_peak/{sample}_peaks.narrowPeak',
 		bam = 'merged_bam_HQ/{sample}.q5.rmdup.bam'
 	output:
@@ -495,7 +501,7 @@ rule HINT:
 		rgt-hint footprinting \
 			--atac-seq \
 			--paired-end \
-			--organism=hg19 \
+			--organism=hg38 \
 			--output-prefix {wildcards.sample} \
 			--output-location=HINT \
 			{input.bam}CHRS \
@@ -517,7 +523,7 @@ rule union_HINT_by_type:
 		intersect = 'HINT/{cell_type}.intersect.bed',
 		processed = 'HINT/{cell_type}.intersect.colors.bed'
 	run:
-		shell("cat {input.hint} | sort -k1,1 -k2,2n > {output.union}")
+		shell("cat {input.hint} | LC_COLLATE=C sort -k1,1 -k2,2n > {output.union}")
 		shell("module load {config[bedtools_version]}; \
 			bedtools merge -i {output.union} -c 5 -o mean > {output.merge}")
 		shell("module load {config[bedtools_version]}; \
@@ -552,10 +558,10 @@ rule HINT_motif_scan:
 		shell("mkdir -p HINT_motif_scan")
 		shell("module load {config[rgt_version]}; \
 			rgt-motifanalysis matching --motif-dbs $RGTDATA/motifs/hocomoco \
-				--organism=hg19 \
+				--organism=hg38 \
 				--input-files {input} \
 				--output-location HINT")
-		shell("sort -k1,1 -k2,2n {output} > {output}TEMP")
+		shell("LC_COLLATE=C sort -k1,1 -k2,2n {output} > {output}TEMP")
 		if wildcards.cell_type == 'RFP_ATAC-Seq':
 			color = '255,0,0'
 		elif wildcards.cell_type == 'GFP_ATAC-Seq':
@@ -578,7 +584,7 @@ rule make_chunks:
 	shell:
 		"""
 		mkdir -p HINT/chunks
-		cut -f4 {input} | sort | uniq  > {output} 
+		cut -f4 {input} | LC_COLLATE=C sort | uniq  > {output} 
 		split -l 13 --additional-suffix {wildcards.cell_type} {output}
 		"""
 
@@ -594,7 +600,7 @@ rule HINT_motif_scan_chunker:
 	shell:
 		"""
 		LC_ALL=C
-		grep -f {wildcards.chunk}{cell_type} {input.footprint} > {output}
+		grep -f {wildcards.chunk}{wildcards.cell_type} {input.footprint} > {output}
 		"""
 	
 # differential footprint testing
@@ -614,7 +620,7 @@ rule HINT_differential:
 		condition1 = wildcards.comparison.split('__not__')[0].split('_')[0]
 		condition2 = wildcards.comparison.split('__not__')[1].split('_')[0]
 		shell("module load {config[rgt_version]}; module load tex; \
-		rgt-hint differential --organism=hg19 --bc --nc {threads} \
+		rgt-hint differential --organism=hg38 --bc --nc {threads} \
 			--mpbs-file1={input.motif_A} \
 			--mpbs-file2={input.motif_B} \
 			--reads-file1={input.bam_A} \
@@ -643,7 +649,7 @@ rule merge_HINT_diff_results:
 rule peaks_in_tss:
 	input:
 		peaks = 'macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak',
-		tss = 'annotation/tss_hg19.bed'
+		tss = 'annotation/tss_GRCh38.bed'
 	output:
 		'macs_peak/{cell_type}_common_peaks.blackListed.narrowPeak.tss_overlap.bed'
 	shell:
@@ -663,8 +669,8 @@ rule common_peaks_across_all:
 		macs = 'macs_peak/all_common_peaks.blackListed.narrowPeak.bed'
 	shell:
 		"""
-		cat {input.macs} | sort -k1,1 -k2,2n -T /scratch/ | awk -v OFS='\t' '{{print $1,$2,$3,".",$4,".",$10,$11,$12}}' > {output.macs}
-		cat {input.hint} | sort -k1,1 -k2,2n -T /scratch/ > {output.hint}
+		cat {input.macs} | LC_COLLATE=C sort -k1,1 -k2,2n -T /scratch/ | awk -v OFS='\t' '{{print $1,$2,$3,".",$4,".",$10,$11,$12}}' > {output.macs}
+		cat {input.hint} | LC_COLLATE=C sort -k1,1 -k2,2n -T /scratch/ > {output.hint}
 		"""
 
 # filter down HINT to diff sig TFBS footprints
@@ -678,7 +684,7 @@ rule HINT_interesting_footprints:
 		bed = 'HINT/all_common_footprints.intersect.colors_mpbs.sig_footprints.bed'
 	shell:
 		"""
-		cat {input.sig} | sort | uniq  > {output.sig}
+		cat {input.sig} | LC_COLLATE=C sort | uniq  > {output.sig}
 		LC_ALL=C
 		grep -hFf {output.sig} {input} | grep "^chr"  > {output.bed}
 		"""
@@ -689,7 +695,7 @@ rule find_closest_TSS_to_all_common:
 	input:
 		footprint = 'HINT/all_common_footprints.intersect.colors_mpbs.bed',
 		bed = 'macs_peak/all_common_peaks.blackListed.narrowPeak.bed',
-		tss = 'annotation/tss_hg19.bed'
+		tss = 'annotation/tss_GRCh38.bed'
 	output:
 		hint = 'HINT/all_common_footprints.intersect.colors_mpbs.closestTSS.bed.gz',
 		macs = 'macs_peak/all_common_peaks.blackListed.narrowPeak.closestTSS.bed.gz'
@@ -698,14 +704,14 @@ rule find_closest_TSS_to_all_common:
 		module load samtools
 		module load {config[bedtools_version]}
 		cat {input.bed} | grep -v mm10 | \
-			sort -k1,1 -k2,2n | \
-			closestBed -g <( sort -k1,1 -k2,2n {config[bwa_genome_sizes]} ) \
-				-k 4 -d -a - -b <( sort -k1,1 -k2,2n {input.tss} ) | \
+			LC_COLLATE=C sort -k1,1 -k2,2n | \
+			closestBed -g <( LC_COLLATE=C sort -k1,1 -k2,2n {config[bwa_genome_sizes]} ) \
+				-k 4 -d -a - -b <( LC_COLLATE=C sort -k1,1 -k2,2n {input.tss} ) | \
 			bgzip -f > {output.macs}
 
 		cat {input.footprint} | \
-			closestBed -g <( sort -k1,1 -k2,2n {config[bwa_genome_sizes]} ) \
-				-k 4 -d -a - -b <( sort -k1,1 -k2,2n {input.tss} ) | \
+			closestBed -g <( LC_COLLATE=C sort -k1,1 -k2,2n {config[bwa_genome_sizes]} ) \
+				-k 4 -d -a - -b <( LC_COLLATE=C sort -k1,1 -k2,2n {input.tss} ) | \
 			bgzip -f > {output.hint}
 		"""
 
@@ -845,18 +851,18 @@ rule HINT_bigBed:
 		all = 'HINT/all_common_footprints.intersect.colors_mpbs.bed',
 		sig = 'HINT/all_common_footprints.intersect.colors_mpbs.sig_footprints.bed'
 	output:
-		all = '/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_HINT_footprints.bb',
-		sig = '/data/mcgaugheyd/datashare/hufnagel/hg19/sig_HINT_footprints.bb'
+		all = '/data/mcgaugheyd/datashare/hufnagel/hg38/all_common_HINT_footprints.bb',
+		sig = '/data/mcgaugheyd/datashare/hufnagel/hg38/sig_HINT_footprints.bb'
 	params:
-		base_path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/'
+		base_path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE/iPSC_RPE_ATAC_Seq/GRCh38/'
 	shell:
 		"""
 		module load ucsc
-		bedToBigBed {input.all} /data/mcgaugheyd/genomes/hg19/hg19.chrom.sizes {input.all}.bb
-		ln -s {params.base_path}{input.all}.bb {output.all}
+		bedToBigBed {input.all} /data/mcgaugheyd/genomes/GRCh38/hg38.chrom.sizes {input.all}.bb
+		cp {params.base_path}{input.all}.bb {output.all}
 		
-		bedToBigBed {input.sig} /data/mcgaugheyd/genomes/hg19/hg19.chrom.sizes {input.sig}.bb
-		ln -s {params.base_path}{input.sig}.bb {output.sig}
+		bedToBigBed {input.sig} /data/mcgaugheyd/genomes/GRCh38/hg38.chrom.sizes {input.sig}.bb
+		cp {params.base_path}{input.sig}.bb {output.sig}
 		"""
 
 # set up data for ucsc viewing
@@ -867,17 +873,17 @@ rule ucsc_view_bigWig:
 		bigWig = 'bigWig/{sample}.bw', 
 		bed = 'macs_peak/{sample}_peaks.blackListed.narrowPeak',
 	params:
-		base_path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/'
+		base_path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE/iPSC_RPE_ATAC_Seq/GRCh38/'
 	output:
-		bigWig = '/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}.bw',
-		bigBed = '/data/mcgaugheyd/datashare/hufnagel/hg19/{sample}_peaks.blackListed.hg19.narrowPeak.bb',
+		bigWig = '/data/mcgaugheyd/datashare/hufnagel/hg38/{sample}.bw',
+		bigBed = '/data/mcgaugheyd/datashare/hufnagel/hg38/{sample}_peaks.blackListed.hg38.narrowPeak.bb',
 	shell:
 		"""
 		module load ucsc
-		cut -f1,2,3,4 {input.bed} | grep -v mm10_TYR_enhancer_chr7_87538324_87543016 | sort -k1,1 -k2,2n > {input.bed}TEMP 
-		bedToBigBed {input.bed}TEMP /data/mcgaugheyd/genomes/hg19/hg19.chrom.sizes {input.bed}.bb
-		ln -s  {params.base_path}{input.bed}.bb {output.bigBed}
-		ln -s {params.base_path}{input.bigWig} {output.bigWig}
+		cut -f1,2,3,4 {input.bed} | grep -v mm10_TYR_enhancer_chr7_87538324_87543016 | LC_COLLATE=C sort -k1,1 -k2,2n > {input.bed}TEMP 
+		bedToBigBed {input.bed}TEMP {config[bwa_genome_sizes]} {input.bed}.bb
+		cp  {params.base_path}{input.bed}.bb {output.bigBed}
+		cp {params.base_path}{input.bigWig} {output.bigWig}
 		rm {input.bed}TEMP
 		"""
 
@@ -885,14 +891,15 @@ rule ucsc_view_common_peaks:
 	input:
 		master = 'macs_peak/all_common_peaks.blackListed.narrowPeak.bed'
 	params:
-		 base_path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/'
+		 base_path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE/iPSC_RPE_ATAC_Seq/GRCh38/'
 	output:
-		bigBedMasterPeaks = '/data/mcgaugheyd/datashare/hufnagel/hg19/all_common_peaks.blackListed.narrowPeak.bb'
+		bigBedMasterPeaks = '/data/mcgaugheyd/datashare/hufnagel/hg38/all_common_peaks.blackListed.narrowPeak.bb'
 	shell:
 		"""
 		module load ucsc
-		bedToBigBed {input.master} /data/mcgaugheyd/genomes/hg19/hg19.chrom.sizes {input.master}.bb
-		ln -s {params.base_path}{input.master}.bb {output.bigBedMasterPeaks}
+		bedSort {input.master} {input.master}BEDSORT
+		bedToBigBed {input.master}BEDSORT {config[bwa_genome_sizes]}  {input.master}.bb
+		cp {params.base_path}{input.master}.bb {output.bigBedMasterPeaks}
 		"""	
 
 # get homer motif cat bed file into bigBed for online viewing
@@ -900,14 +907,14 @@ rule ucsc_view_homer_motifs:
 	input:
 		bed = 'peak_full/homer/interesting_homer_motif.bed.gz'
 	output:
-		'/data/mcgaugheyd/datashare/hufnagel/hg19/interesting_homer_motif.bb'
+		'/data/mcgaugheyd/datashare/hufnagel/hg38/interesting_homer_motif.bb'
 	params:
-		base_path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE_ATAC_Seq/'
+		base_path = '/data/mcgaugheyd/projects/nei/hufnagel/iPSC_RPE/iPSC_RPE_ATAC_Seq/GRCh38/'
 	shell:
 		"""
 		module load ucsc
 		zcat {input} | cut -f1,2,3,4 > {input}TEMP
-		bedToBigBed {input}TEMP /data/mcgaugheyd/genomes/hg19/hg19.chrom.sizes {input}.bb
+		bedToBigBed {input}TEMP /data/mcgaugheyd/genomes/GRCh38/hg38.chrom.sizes {input}.bb
 		cp -f {params.base_path}{input}.bb {output}
 		rm {input}TEMP
 		"""
